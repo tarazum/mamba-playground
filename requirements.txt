@@ -1,0 +1,12 @@
+# Mamba Playground — CPU requirements (works on any machine, no CUDA needed)
+# Install: pip install -r requirements.txt
+
+# Core ML
+torch>=2.2.0
+numpy>=1.26.0
+
+# Visualization (optional, for plotting experiment results)
+matplotlib>=3.8.0
+
+# Utilities
+tqdm>=4.66.0

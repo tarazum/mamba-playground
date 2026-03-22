@@ -1,0 +1,32 @@
+# Mamba Playground — GPU requirements (CUDA-enabled machine)
+# Includes all CPU requirements plus GPU-only packages.
+#
+# BLACKWELL (RTX 5070 / sm_120) SPECIAL INSTRUCTIONS:
+# Pre-compiled mamba-ssm wheels do NOT include sm_120 support.
+# Build from source:
+#
+#   export TORCH_CUDA_ARCH_LIST="12.0"
+#   pip install causal-conv1d --no-binary causal-conv1d
+#   pip install mamba-ssm --no-binary mamba-ssm
+#
+# Requirements:
+#   - CUDA 12.6+
+#   - PyTorch 2.6+ with CUDA 12.6 build
+#   - gcc + nvcc in PATH (Linux) or MSVC + CUDA toolkit (Windows)
+#
+# Standard CUDA (Ampere / Ada Lovelace — RTX 3090, 4090):
+#   pip install -r requirements-gpu.txt  (pre-built wheels available)
+
+# CPU requirements (included)
+-r requirements.txt
+
+# PyTorch with CUDA (install separately via pytorch.org for your CUDA version)
+# torch>=2.6.0+cu126  # do not uncomment — install from pytorch.org first
+
+# GPU mamba-ssm (requires CUDA + compiled PyTorch)
+# For standard CUDA (sm_80, sm_86, sm_89, sm_90):
+causal-conv1d>=1.4.0
+mamba-ssm>=2.2.2
+
+# GPU utilities
+accelerate>=0.30.0
