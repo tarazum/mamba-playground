@@ -1,0 +1,50 @@
+{
+  "python": {
+    "version": "3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26100-SP0"
+  },
+  "torch": {
+    "version": "2.10.0+cpu",
+    "cuda_available": false,
+    "cuda_version": null,
+    "num_gpus": 0,
+    "gpus": []
+  },
+  "mamba_ssm": {
+    "available": false,
+    "note": "mamba-ssm not installed (GPU package, requires CUDA). Experiments will use the CPU MinimalSSM fallback from core/ssm.py. To install on GPU machine: pip install -r requirements-gpu.txt"
+  },
+  "causal_conv1d": {
+    "available": false,
+    "note": "Required for mamba-ssm \u2014 not needed for CPU fallback"
+  },
+  "cpu_speed": [
+    {
+      "seq_len": 32,
+      "batch": 32,
+      "d_model": 32,
+      "n_layers": 2,
+      "ms_per_batch": 31.7,
+      "sequences_per_sec": 1008.0,
+      "verdict": "fast enough"
+    },
+    {
+      "seq_len": 64,
+      "batch": 32,
+      "d_model": 32,
+      "n_layers": 2,
+      "ms_per_batch": 56.5,
+      "sequences_per_sec": 566.0,
+      "verdict": "fast enough"
+    },
+    {
+      "seq_len": 128,
+      "batch": 16,
+      "d_model": 64,
+      "n_layers": 2,
+      "ms_per_batch": 103.9,
+      "sequences_per_sec": 154.0,
+      "verdict": "fast enough"
+    }
+  ]
+}

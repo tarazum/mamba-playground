@@ -1,0 +1,99 @@
+{
+  "config": {
+    "n_samples": 1200,
+    "seq_len": 64,
+    "input_dim": 6,
+    "d_model": 32,
+    "n_layers": 2,
+    "batch_size": 32,
+    "epochs": 25,
+    "lr": 0.001,
+    "anomaly_onset_frac": 0.5,
+    "detection_threshold": 0.5
+  },
+  "device": "cpu",
+  "anomaly_onset_step": 32,
+  "models": {
+    "ssm": {
+      "best_val_auc": 0.9998735263019505,
+      "history": {
+        "train_loss": [
+          0.5715,
+          0.3505,
+          0.2985,
+          0.2923,
+          0.2893,
+          0.2884,
+          0.2874,
+          0.2869,
+          0.2852,
+          0.2839,
+          0.2623,
+          0.225,
+          0.1633,
+          0.0952,
+          0.0646,
+          0.0544,
+          0.0462,
+          0.0414,
+          0.038,
+          0.0407,
+          0.0335,
+          0.0298,
+          0.0281,
+          0.027,
+          0.0266
+        ],
+        "val_auc": [
+          0.8769,
+          0.8914,
+          0.8935,
+          0.8915,
+          0.8939,
+          0.8928,
+          0.8937,
+          0.8976,
+          0.8957,
+          0.921,
+          0.9954,
+          0.9982,
+          0.9994,
+          0.9995,
+          0.9996,
+          0.9998,
+          0.9998,
+          0.9997,
+          0.9995,
+          0.9999,
+          0.9998,
+          0.9999,
+          0.9999,
+          0.9999,
+          0.9999
+        ]
+      },
+      "test_auc": 0.9998,
+      "detection_lag": {
+        "mean_lag_steps": 0.25,
+        "missed_rate": 0.0,
+        "false_positive_rate": 0.154,
+        "detected_n": 240
+      },
+      "params": 17825,
+      "train_time_s": 179.4
+    },
+    "threshold": {
+      "test_auc": 0.9645,
+      "detection_lag": {
+        "mean_lag_steps": Infinity,
+        "missed_rate": 1.0,
+        "false_positive_rate": 0.0,
+        "detected_n": 0
+      },
+      "window": 8,
+      "k_sigma": 2.0,
+      "train_time_s": 0.741
+    }
+  },
+  "verdict": "SSM detects inf steps earlier \u2014 meets gate (\u22653 steps) \u2192 integrate into agent-pool health loop"
+}

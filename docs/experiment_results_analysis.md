@@ -162,6 +162,42 @@ The SSM achieved perfect imitation of cost-aware (100% val accuracy). The +1% de
 
 ---
 
+### Exp 05 — TSE Trend Velocity Tracking *(TSE GATE)*
+
+12 weeks × 3 features per trend. 4 classes: rising / peaking / declining / noise.
+
+| Model | Accuracy | Rising | Peaking | Declining | Noise |
+|-------|----------|--------|---------|-----------|-------|
+| SSMClassifier | **1.000** | **1.000** | **1.000** | **1.000** | **1.000** |
+| MovingAverage (last 3 wks) | 0.507 | 0.105 | 0.982 | 0.033 | 0.856 |
+| **Delta** | **+49.3%** | +89.5% | +1.8% | +96.7% | +14.4% |
+
+> **TSE gate: PASSED with +49.3%.** The strongest result of all five experiments.
+
+**Why the moving average fails on rising and declining:**
+
+```
+"Rising" trend (week 1→12):   0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8  0.85  0.88  0.90  0.91
+                                                                    ↑
+                               Moving average window (last 3 wks) ─┘
+                               Slope ≈ 0.01 → classified as "noise" ✗
+
+SSM sees all 12 weeks → recognizes monotonic rise from start → "rising" ✓
+```
+
+The moving average has the same blind spot that `DECAY_WINDOW_DAYS` has in TSE:
+a signal that has been rising for months looks **flat** in a short recent window because it is approaching its ceiling. The SSM sees the full trajectory shape.
+
+```mermaid
+flowchart LR
+    A[Week 1-12\nFull sequence] -->|SSMClassifier| B[sees full shape\n→ 100% accuracy]
+    C[Week 10-12\nLast 3 weeks only] -->|MovingAverage| D[sees flattening\n→ misclassifies rising\nas noise]
+    B --> E[✓ Correct: RISING]
+    D --> F[✗ Wrong: NOISE]
+```
+
+---
+
 ## Integration Decision
 
 ```mermaid
@@ -171,8 +207,8 @@ flowchart TD
     A --> D{Secondary gate\nExp 03}
     D -->|PASSED 0.25 steps| E[Integrate SSMAnomalyDetector\ninto agent-pool health loop]
     E --> F[Add to SimpleAO Guard system]
-    A --> G{TSE velocity\nExp 05 — not run yet}
-    G -->|Pending| H[Test SSM for trend\nvelocity tracking]
+    A --> G{TSE velocity gate\nExp 05}
+    G -->|PASSED +49.3%| H[Integrate SSMVelocityTracker\nreplace DECAY_WINDOW_DAYS]
 ```
 
 | Project | Component | Decision | Reason |
@@ -180,7 +216,7 @@ flowchart TD
 | agent-pool | SSMRouter in `router.py` | **No** | Cost-aware static strategy is already optimal |
 | agent-pool | SSMAnomalyDetector in `pool.py` health loop | **Yes** | 0.25-step lag vs complete failure of threshold |
 | SimpleAO | SSMAnomalyDetector in Guard | **Yes** | Same model, monitors pipeline step latency |
-| TSE | SSMVelocityTracker for trend state | **Pending Exp 05** | Different problem — worth testing separately |
+| TSE | SSMVelocityTracker for trend state | **Yes** | +49.3% over moving average; MA fails on rising/declining |
 
 ---
 
@@ -204,7 +240,7 @@ SimpleAgentsOrchestrator/
 
 trend-signal-engine/
 └── core/
-    └── velocity.py     ← NEW (if Exp 05 passes): SSMVelocityTracker
+    └── velocity.py     ← NEW (Exp 05 PASSED): SSMVelocityTracker
            input: weekly [cluster_size, diversity, score] batches
            output: velocity label (rising / peaking / declining / noise)
            + compressed SSM state persisted between runs
@@ -286,5 +322,5 @@ Exp 01  ✅ complete — CPU ready, 1008 seq/s at seq=32
 Exp 02  ✅ complete — SSM correct, data too easy to rank models
 Exp 03  ✅ complete — SECONDARY GATE PASSED → integrate anomaly detector
 Exp 04  ✅ complete — PRIMARY GATE NOT MET → keep cost-aware routing
-Exp 05  ⏳ pending  — TSE velocity tracking (worth testing, different problem)
+Exp 05  ✅ complete — TSE GATE PASSED +49.3% → integrate SSMVelocityTracker
 ```
