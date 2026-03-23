@@ -365,6 +365,7 @@ def simulate_routing_episode(
     rr_index = 0
     call_counts = [0] * len(workers)
     history: list[np.ndarray] = []
+    decisions: list[int] = []
 
     latencies, costs, errors, timeouts = [], [], [], []
 
@@ -411,6 +412,7 @@ def simulate_routing_episode(
             wi = rr_index % len(workers)
             rr_index += 1
 
+        decisions.append(wi)
         call_counts[wi] += 1
         w = workers[wi]
         latency = worker_latencies[wi]
@@ -447,4 +449,6 @@ def simulate_routing_episode(
         "error_rate": float(np.mean(errors)),
         "timeout_rate": float(np.mean(timeouts)),
         "call_distribution": call_counts,
+        "event_history": history,
+        "decisions": decisions,
     }
