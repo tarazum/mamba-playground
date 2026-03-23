@@ -205,18 +205,18 @@ flowchart TD
     A[All experiments complete] --> B{Primary gate\nExp 04}
     B -->|NOT MET +1%| C[Keep cost-aware routing\nin agent-pool]
     A --> D{Secondary gate\nExp 03}
-    D -->|PASSED 0.25 steps| E[Integrate SSMAnomalyDetector\ninto agent-pool health loop]
-    E --> F[Add to SimpleAO Guard system]
+    D -->|PASSED 0.25 steps| E[Phase 2: validate on\nreal agent-pool traces]
+    E --> F[If confirmed: add to\nSimpleAO Guard system]
     A --> G{TSE velocity gate\nExp 05}
-    G -->|PASSED +49.3%| H[Integrate SSMVelocityTracker\nreplace DECAY_WINDOW_DAYS]
+    G -->|PASSED +49.3%| H[Phase 2: validate on\nreal TSE weekly history]
 ```
 
-| Project | Component | Decision | Reason |
-|---------|-----------|----------|--------|
-| agent-pool | SSMRouter in `router.py` | **No** | Cost-aware static strategy is already optimal |
-| agent-pool | SSMAnomalyDetector in `pool.py` health loop | **Yes** | 0.25-step lag vs complete failure of threshold |
-| SimpleAO | SSMAnomalyDetector in Guard | **Yes** | Same model, monitors pipeline step latency |
-| TSE | SSMVelocityTracker for trend state | **Yes** | +49.3% over moving average; MA fails on rising/declining |
+| Project | Component | Playground Finding | Next Step |
+|---------|-----------|-------------------|-----------|
+| agent-pool | SSMRouter in `router.py` | SSM reproduced cost-aware exactly — no improvement | No further action; keep cost-aware static routing |
+| agent-pool | SSMAnomalyDetector in `pool.py` health loop | 0.25-step lag on synthetic data vs 100% miss rate | **Phase 2**: validate on real agent-pool event traces |
+| SimpleAO | SSMAnomalyDetector in Guard | Same model applies to pipeline step events | **Phase 2**: validate on real SimpleAO pipeline traces |
+| TSE | SSMVelocityTracker for trend state | +49.3% over moving average on synthetic sequences | **Phase 2**: validate on real TSE weekly history |
 
 ---
 

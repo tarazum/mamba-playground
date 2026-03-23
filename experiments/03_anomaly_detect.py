@@ -241,7 +241,8 @@ def evaluate_detection_lag(
             lags.append(int(flags_after[0]))
 
     return {
-        "mean_lag_steps": round(float(np.mean(lags)) if lags else float("inf"), 2),
+        "mean_lag_steps": round(float(np.mean(lags)), 2) if lags else None,
+        "missed_all": len(lags) == 0,
         "missed_rate": round(missed / n, 3),
         "false_positive_rate": round(false_positives / n, 3),
         "detected_n": len(lags),
@@ -349,28 +350,42 @@ def main():
     thr_auc_v = report["models"]["threshold"]["test_auc"]
     ssm_lag_v = report["models"]["ssm"]["detection_lag"]["mean_lag_steps"]
     thr_lag_v = report["models"]["threshold"]["detection_lag"]["mean_lag_steps"]
+    ssm_missed_all = report["models"]["ssm"]["detection_lag"]["missed_all"]
+    thr_missed_all = report["models"]["threshold"]["detection_lag"]["missed_all"]
+
+    def fmt_lag(v, missed_all):
+        return "missed all" if missed_all else f"{v:.2f}"
 
     print(f"  {'Model':<25} {'AUC':>6}  {'Mean lag (steps)':>18}  {'Miss rate':>10}  {'FP rate':>8}")
     print(f"  {'-'*70}")
-    print(f"  {'SSMAnomalyDetector':<25} {ssm_auc_v:>6.3f}  {ssm_lag_v:>18.2f}  "
+    print(f"  {'SSMAnomalyDetector':<25} {ssm_auc_v:>6.3f}  {fmt_lag(ssm_lag_v, ssm_missed_all):>18}  "
           f"{report['models']['ssm']['detection_lag']['missed_rate']:>10.3f}  "
           f"{report['models']['ssm']['detection_lag']['false_positive_rate']:>8.3f}")
-    print(f"  {'ThresholdDetector':<25} {thr_auc_v:>6.3f}  {thr_lag_v:>18.2f}  "
+    print(f"  {'ThresholdDetector':<25} {thr_auc_v:>6.3f}  {fmt_lag(thr_lag_v, thr_missed_all):>18}  "
           f"{report['models']['threshold']['detection_lag']['missed_rate']:>10.3f}  "
           f"{report['models']['threshold']['detection_lag']['false_positive_rate']:>8.3f}")
 
-    lag_improvement = thr_lag_v - ssm_lag_v  # positive = SSM detects earlier
-
-    gate_threshold = 3  # secondary gate: SSM must detect 3+ steps earlier (CLAUDE.md)
-    if lag_improvement >= gate_threshold:
-        verdict = (f"SSM detects {lag_improvement:.1f} steps earlier — "
-                   f"meets gate (≥{gate_threshold} steps) → integrate into agent-pool health loop")
-    elif lag_improvement > 0:
-        verdict = (f"SSM detects {lag_improvement:.1f} steps earlier — "
-                   f"below gate ({gate_threshold} steps) — marginal improvement, consider static rules")
+    gate_threshold = 3
+    if thr_missed_all and not ssm_missed_all:
+        lag_improvement = gate_threshold + 1  # SSM detects, baseline does not
+        verdict = (f"SSM detects anomalies (lag={ssm_lag_v:.2f} steps); "
+                   f"threshold baseline missed all detections — "
+                   f"promising on synthetic data, validate on real traces before production")
+    elif ssm_missed_all:
+        lag_improvement = 0
+        verdict = "SSM failed to detect — threshold rules are sufficient"
     else:
-        verdict = (f"Threshold baseline matches or beats SSM (lag delta={lag_improvement:.1f}) — "
-                   f"static rules are sufficient for anomaly detection")
+        lag_improvement = thr_lag_v - ssm_lag_v
+        if lag_improvement >= gate_threshold:
+            verdict = (f"SSM detects {lag_improvement:.1f} steps earlier — "
+                       f"meets gate (≥{gate_threshold} steps); "
+                       f"validate on real traces before production integration")
+        elif lag_improvement > 0:
+            verdict = (f"SSM detects {lag_improvement:.1f} steps earlier — "
+                       f"below gate ({gate_threshold} steps); marginal improvement")
+        else:
+            verdict = (f"Threshold baseline matches or beats SSM — "
+                       f"static rules are sufficient")
 
     report["verdict"] = verdict
     print(f"\nGate: detect stuck workers >{gate_threshold} events before timeout")

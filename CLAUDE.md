@@ -29,16 +29,17 @@ mamba-playground/
 ├── data/
 │   └── generators.py         ← synthetic event stream generators (no external data needed)
 ├── core/
-│   ├── ssm.py                ← minimal CPU-compatible SSM (PyTorch, no CUDA kernels)
-│   └── model.py              ← unified model wrapper (auto-detects GPU/CPU backend)
+│   └── ssm.py                ← minimal CPU-compatible SSM (PyTorch, no CUDA kernels)
 ├── experiments/
 │   ├── 01_setup_check.py     ← environment detection, speed test, GPU notes
 │   ├── 02_event_classify.py  ← classify event streams: normal / degrading / stuck
 │   ├── 03_anomaly_detect.py  ← detect anomaly onset in streaming agent events
-│   └── 04_routing_sim.py     ← compare SSM routing vs round-robin / least-busy
+│   ├── 04_routing_sim.py     ← compare SSM routing vs round-robin / least-busy
+│   └── 05_tse_velocity.py    ← classify trend velocity: rising / peaking / declining / noise
 ├── docs/
 │   ├── README.md
-│   └── integration_plan.md   ← how results map to agent-pool, SimpleAO, TSE
+│   ├── experiment_results_analysis.md  ← full results with diagrams and integration decisions
+│   └── integration_plan.md             ← code-level integration guide per project
 └── results/                  ← experiment outputs (JSON + plots)
 ```
 
@@ -55,6 +56,7 @@ python experiments/01_setup_check.py
 python experiments/02_event_classify.py
 python experiments/03_anomaly_detect.py
 python experiments/04_routing_sim.py
+python experiments/05_tse_velocity.py
 ```
 
 ## GPU Setup (RTX 5070 / Blackwell)
@@ -65,11 +67,17 @@ for Blackwell-specific (sm_120) build instructions.
 ## What "Success" Looks Like
 
 Experiment 04 (routing simulation) is the primary gate:
-- If SSM routing beats round-robin by >10% on average response quality → integrate into agent-pool
+- If SSM routing beats round-robin by >10% on composite quality → candidate for agent-pool router
 - If SSM routing is within 5% of round-robin → static strategies are good enough
 
 Experiment 03 (anomaly detection) is the secondary gate:
-- If SSM detects stuck workers >3 events before timeout → integrate into agent-pool health loop + SimpleAO Guard
+- If SSM detects stuck workers >3 events before timeout → candidate for agent-pool health loop + SimpleAO Guard
 - If detection lag is similar to a simple threshold → static rules are good enough
 
-Do not integrate Mamba into production systems before running all four experiments.
+Experiment 05 (TSE velocity) is the TSE gate:
+- If SSM beats moving-average baseline by >10% on velocity classification → candidate for TSE velocity tracker
+- If comparable → DECAY_WINDOW_DAYS heuristic is sufficient
+
+**Gates passing on synthetic data means: proceed to Phase 2 (real trace validation), not production integration.**
+
+Do not integrate Mamba into production systems before running all five experiments AND validating on real event traces.

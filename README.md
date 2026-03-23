@@ -45,6 +45,7 @@ python experiments/01_setup_check.py
 python experiments/02_event_classify.py
 python experiments/03_anomaly_detect.py
 python experiments/04_routing_sim.py
+python experiments/05_tse_velocity.py
 ```
 
 ## GPU Setup (RTX 5070 / Blackwell sm_120)

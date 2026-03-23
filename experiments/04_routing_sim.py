@@ -62,16 +62,30 @@ CFG = {
 # Based on generator worker configs (worst case degraded worker ~660ms avg)
 MAX_LATENCY_MS = 700.0
 
+# Cost reference: max expected avg cost per episode for normalization
+# API worker costs $0.005/call × 200 requests = $1.00 worst case
+MAX_COST_USD = 1.0
+
+# Quality weights: must sum to 1.0
+QUALITY_WEIGHTS = {"latency": 0.40, "reliability": 0.40, "cost": 0.20}
+
 
 # ── composite quality ──────────────────────────────────────────────────────────
 
-def composite_quality(avg_latency_ms: float, error_rate: float) -> float:
+def composite_quality(avg_latency_ms: float, error_rate: float, avg_cost_usd: float = 0.0) -> float:
     """
     Single quality score in [0, 1] — higher is better.
-    Balances latency and errors equally.
+    Weights: latency 40%, reliability 40%, cost 20%.
+    Cost is included because cost-aware routing is a stated objective.
     """
-    latency_norm = min(avg_latency_ms / MAX_LATENCY_MS, 1.0)
-    return (1.0 - error_rate) * (1.0 - latency_norm)
+    latency_score = 1.0 - min(avg_latency_ms / MAX_LATENCY_MS, 1.0)
+    reliability_score = 1.0 - error_rate
+    cost_score = 1.0 - min(avg_cost_usd / MAX_COST_USD, 1.0)
+    return (
+        QUALITY_WEIGHTS["latency"] * latency_score
+        + QUALITY_WEIGHTS["reliability"] * reliability_score
+        + QUALITY_WEIGHTS["cost"] * cost_score
+    )
 
 
 # ── training dataset ──────────────────────────────────────────────────────────
@@ -186,7 +200,7 @@ def run_simulation(strategy: str, n_episodes: int, episode_length: int,
         "p95_latency_ms": round(float(np.percentile(all_latencies, 95)), 2),
         "error_rate": round(avg_err, 4),
         "avg_cost_usd": round(avg_cost, 4),
-        "composite_quality": round(composite_quality(avg_lat, avg_err), 4),
+        "composite_quality": round(composite_quality(avg_lat, avg_err, avg_cost), 4),
     }
 
 
