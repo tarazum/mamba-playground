@@ -222,3 +222,48 @@ class SSMRouter(nn.Module):
         with torch.no_grad():
             logits = self.forward(x)
             return int(logits[0].argmax().item())
+
+
+class SSMQualityPredictor(nn.Module):
+    """
+    Prediction-based worker router.
+
+    Instead of imitating an oracle (SSMRouter), this model predicts the
+    composite quality score [0, 1] for each worker from event history, then
+    routes to the worker with the highest predicted quality.
+
+    Training uses masked MSE: only the observed worker's quality is supervised
+    per step, so random/round-robin data collection gives unbiased coverage of
+    all workers without requiring counterfactual rollouts.
+
+    This design answers a different question than imitation learning:
+      SSMRouter:         "what would cost-aware do here?"
+      SSMQualityPredictor: "which worker will actually perform best here?"
+    """
+
+    def __init__(self, event_dim: int, d_model: int, n_workers: int, n_layers: int = 2):
+        super().__init__()
+        self.input_proj = nn.Linear(event_dim, d_model)
+        self.ssm = StackedSSM(d_model, n_layers, d_state=16)
+        self.quality_head = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, n_workers),
+            nn.Sigmoid(),
+        )
+        self.n_workers = n_workers
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        x: (batch, seq_len, event_dim)
+        returns: (batch, n_workers) — predicted quality scores in [0, 1]
+        """
+        x = self.input_proj(x)
+        x = self.ssm(x)
+        return self.quality_head(x[:, -1, :])
+
+    def route(self, x: torch.Tensor) -> int:
+        """Return the index of the worker with the highest predicted quality."""
+        with torch.no_grad():
+            quality = self.forward(x)
+            return int(quality[0].argmax().item())

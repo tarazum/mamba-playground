@@ -336,6 +336,61 @@ class WorkerState:
     degradation_start: int = 0
 
 
+# Virtual timestep (ms) used to track in-flight request counts for least-busy.
+_TIMESTEP_MS = 100
+
+# Maximum per-call cost used to normalise step quality scores.
+_MAX_COST_PER_CALL = 0.015
+
+
+def default_worker_pool() -> list:
+    """Standard 5-worker pool: 3 CLI (free), 1 Ollama (free), 1 API (paid).
+    One CLI worker degrades at request 100."""
+    return [
+        WorkerState("claude-0", WorkerType.CLI,    220, 0.03, 0.000),
+        WorkerState("claude-1", WorkerType.CLI,    240, 0.03, 0.000),
+        WorkerState("ollama-0", WorkerType.OLLAMA, 180, 0.05, 0.000),
+        WorkerState("openai-0", WorkerType.API,    300, 0.02, 0.005),
+        WorkerState("claude-2", WorkerType.CLI,    220, 0.03, 0.000,
+                    is_degrading=True, degradation_start=100),
+    ]
+
+
+def heavy_degradation_pool() -> list:
+    """3 of 5 workers degrade at steps 30/60/90 — tests robustness under
+    distribution shift."""
+    return [
+        WorkerState("claude-0", WorkerType.CLI,    220, 0.03, 0.000,
+                    is_degrading=True, degradation_start=30),
+        WorkerState("claude-1", WorkerType.CLI,    240, 0.03, 0.000,
+                    is_degrading=True, degradation_start=60),
+        WorkerState("ollama-0", WorkerType.OLLAMA, 180, 0.05, 0.000),
+        WorkerState("openai-0", WorkerType.API,    300, 0.02, 0.005),
+        WorkerState("claude-2", WorkerType.CLI,    220, 0.03, 0.000,
+                    is_degrading=True, degradation_start=90),
+    ]
+
+
+def all_api_pool() -> list:
+    """All paid API workers — no zero-cost option.  Tests cost-sensitive routing."""
+    return [
+        WorkerState("gpt-0", WorkerType.API, 280, 0.020, 0.005),
+        WorkerState("gpt-1", WorkerType.API, 300, 0.020, 0.005),
+        WorkerState("gpt-2", WorkerType.API, 320, 0.025, 0.008),
+        WorkerState("gpt-3", WorkerType.API, 350, 0.030, 0.010),
+        WorkerState("gpt-4", WorkerType.API, 400, 0.040, 0.015),
+    ]
+
+
+def _step_quality(latency: float, is_error: float, cost: float) -> float:
+    """Composite quality for one request outcome.  Weights: 40% latency,
+    40% reliability, 20% cost.  Matches composite_quality() in exp04."""
+    lat_score  = 1.0 - min(latency / 700.0, 1.0)
+    rel_score  = 1.0 - float(is_error)
+    cost_score = 1.0 - min(cost / _MAX_COST_PER_CALL, 1.0)
+    return 0.4 * lat_score + 0.4 * rel_score + 0.2 * cost_score
+
+
 def simulate_routing_episode(
     n_requests: int = 200,
     workers: list[WorkerState] | None = None,
@@ -344,72 +399,91 @@ def simulate_routing_episode(
     seed: int = 42,
 ) -> dict:
     """
-    Simulate routing N requests through a pool of workers using the given strategy.
+    Simulate routing N requests through a pool of workers.
 
-    Strategies: "round-robin", "least-busy", "cost-aware", "ssm" (requires ssm_model)
+    Strategies:
+        round-robin  — cyclic assignment
+        least-busy   — queue-depth aware (tracks in-flight requests, not totals)
+        cost-aware   — prefer zero-cost workers, least-busy among them
+        sticky       — stay with same worker until it errors, then rotate
+        ssm          — use ssm_model.route() (requires ssm_model)
 
-    Returns a dict with metrics: avg_latency, total_cost, error_rate, timeout_rate
+    Returns metrics plus per-step arrays for training:
+        step_quality  — composite quality score per request
+        event_history — feature vector per request
+        decisions     — worker index chosen per request
     """
     rng = np.random.default_rng(seed)
 
     if workers is None:
-        workers = [
-            WorkerState("claude-0", WorkerType.CLI, 220, 0.03, 0.0),
-            WorkerState("claude-1", WorkerType.CLI, 240, 0.03, 0.0),
-            WorkerState("ollama-0", WorkerType.OLLAMA, 180, 0.05, 0.0),
-            WorkerState("openai-0", WorkerType.API, 300, 0.02, 0.005),
-            # one worker will degrade at request 100
-            WorkerState("claude-2", WorkerType.CLI, 220, 0.03, 0.0, is_degrading=True, degradation_start=100),
-        ]
+        workers = default_worker_pool()
 
+    n_workers = len(workers)
     rr_index = 0
-    call_counts = [0] * len(workers)
+    call_counts = [0] * n_workers
+
+    # Queue-depth tracking: number of requests currently in-flight per worker.
+    active_requests = [0] * n_workers
+    completion_queue: list[tuple[int, int]] = []  # (complete_at_step, worker_idx)
+
+    sticky_worker = 0  # for sticky routing
+
     history: list[np.ndarray] = []
     decisions: list[int] = []
-
-    latencies, costs, errors, timeouts = [], [], [], []
+    latencies, costs, errors, timeouts, step_quals = [], [], [], [], []
 
     for req_i in range(n_requests):
-        # compute current worker states
-        worker_latencies = []
-        worker_errors = []
-        for wi, w in enumerate(workers):
-            t = max(0, req_i - w.degradation_start) if w.is_degrading and req_i >= w.degradation_start else 0
-            deg = t / 100.0 if w.is_degrading else 0.0
-            effective_latency = w.base_latency * (1 + deg * 2)
-            effective_error = min(w.error_rate + deg * 0.4, 0.9)
-            worker_latencies.append(effective_latency)
-            worker_errors.append(effective_error)
+        # Release completions that finished before this step.
+        still_flying = []
+        for complete_at, ww in completion_queue:
+            if complete_at <= req_i:
+                active_requests[ww] = max(0, active_requests[ww] - 1)
+            else:
+                still_flying.append((complete_at, ww))
+        completion_queue = still_flying
 
-        # select worker
+        # Compute degraded state for each worker.
+        worker_latencies, worker_errors = [], []
+        for wi, w in enumerate(workers):
+            t = max(0, req_i - w.degradation_start) if (w.is_degrading and req_i >= w.degradation_start) else 0
+            deg = t / 100.0 if w.is_degrading else 0.0
+            worker_latencies.append(w.base_latency * (1 + deg * 2))
+            worker_errors.append(min(w.error_rate + deg * 0.4, 0.9))
+
+        # Select worker.
         if strategy == "round-robin":
-            wi = rr_index % len(workers)
+            wi = rr_index % n_workers
             rr_index += 1
 
         elif strategy == "least-busy":
-            wi = int(np.argmin(call_counts))
+            # Use in-flight count, not cumulative call count.
+            wi = int(np.argmin(active_requests))
 
         elif strategy == "cost-aware":
-            # prefer zero-cost workers
             zero_cost = [i for i, w in enumerate(workers) if w.cost_per_call == 0.0]
             if zero_cost:
-                wi = min(zero_cost, key=lambda i: call_counts[i])
+                wi = min(zero_cost, key=lambda i: active_requests[i])
             else:
-                wi = int(np.argmin(call_counts))
+                wi = int(np.argmin(active_requests))
+
+        elif strategy == "sticky":
+            # Stay with the same worker until it errors; then rotate.
+            if errors and errors[-1] == 1.0 and decisions and decisions[-1] == sticky_worker:
+                sticky_worker = (sticky_worker + 1) % n_workers
+            wi = sticky_worker
 
         elif strategy == "ssm" and ssm_model is not None:
-            # use SSM model to score workers (returns index of best worker)
             if len(history) >= 4:
                 import torch
-                seq = np.stack(history[-16:])  # last 16 events
+                seq = np.stack(history[-16:])
                 seq_t = torch.tensor(seq, dtype=torch.float32).unsqueeze(0)
                 with torch.no_grad():
-                    wi = ssm_model.route(seq_t, len(workers))
+                    wi = ssm_model.route(seq_t)
             else:
-                wi = rr_index % len(workers)
+                wi = rr_index % n_workers
                 rr_index += 1
         else:
-            wi = rr_index % len(workers)
+            wi = rr_index % n_workers
             rr_index += 1
 
         decisions.append(wi)
@@ -418,10 +492,10 @@ def simulate_routing_episode(
         latency = worker_latencies[wi]
         error_prob = worker_errors[wi]
 
-        # simulate call outcome
+        # Simulate outcome.
         is_error = rng.random() < error_prob
         is_timeout = latency > 25000
-        actual_latency = rng.normal(latency, latency * 0.1)
+        actual_latency = float(rng.normal(latency, latency * 0.1))
         if is_timeout:
             actual_latency = 30000.0
 
@@ -429,14 +503,20 @@ def simulate_routing_episode(
         costs.append(w.cost_per_call)
         errors.append(float(is_error))
         timeouts.append(float(is_timeout))
+        step_quals.append(_step_quality(actual_latency, float(is_error), w.cost_per_call))
 
-        # record event for SSM history
+        # Update in-flight tracking.
+        steps_to_complete = max(1, round(actual_latency / _TIMESTEP_MS))
+        completion_queue.append((req_i + steps_to_complete, wi))
+        active_requests[wi] += 1
+
+        # Feature vector for SSM history.
         event = np.array([
-            wi / len(workers),
+            wi / n_workers,
             actual_latency / 30000.0,
             float(is_error),
-            w.cost_per_call / 0.01,
-            call_counts[wi] / n_requests,
+            w.cost_per_call / _MAX_COST_PER_CALL,
+            active_requests[wi] / max(n_requests / n_workers, 1),
             0.0,
         ], dtype=np.float32)
         history.append(event)
@@ -446,9 +526,11 @@ def simulate_routing_episode(
         "avg_latency_ms": float(np.mean(latencies)),
         "p95_latency_ms": float(np.percentile(latencies, 95)),
         "total_cost_usd": float(np.sum(costs)),
+        "avg_cost_usd": float(np.mean(costs)),
         "error_rate": float(np.mean(errors)),
         "timeout_rate": float(np.mean(timeouts)),
         "call_distribution": call_counts,
         "event_history": history,
         "decisions": decisions,
+        "step_quality": step_quals,
     }
