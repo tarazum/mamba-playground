@@ -26,9 +26,14 @@ mamba-playground/
 │   ├── 01_setup_check.py     ← environment detection + speed benchmarks
 │   ├── 02_event_classify.py  ← classify event streams: normal / degrading / stuck
 │   ├── 03_anomaly_detect.py  ← detect anomaly onset (secondary gate)
-│   └── 04_routing_sim.py     ← SSM routing vs round-robin / least-busy (PRIMARY gate)
+│   ├── 04_routing_sim.py     ← SSM routing vs static strategies (PRIMARY gate)
+│   └── 05_tse_velocity.py    ← SSM vs moving average for trend velocity (TSE gate)
 ├── docs/
-│   └── integration_plan.md   ← how results map to production decisions
+│   ├── experiment_results_analysis.md  ← full results, diagrams, integration decisions
+│   ├── integration_plan.md             ← code-level integration guide per project
+│   └── project_review_feedback.md      ← independent project review
+├── tests/
+│   └── test_smoke.py         ← smoke tests: shapes, forward passes, JSON safety
 └── results/                  ← experiment outputs (JSON)
 ```
 
@@ -61,16 +66,17 @@ pip install mamba-ssm --no-binary mamba-ssm
 Requires: CUDA 12.6+, PyTorch 2.6+, gcc/nvcc in PATH.
 See `experiments/01_setup_check.py` for automated detection and instructions.
 
-## Success Criteria
+## Results Summary (Phase 2)
 
-| Experiment | Gate | Decision |
-|------------|------|----------|
-| Exp 04 (routing) | SSM beats round-robin by >10% | Integrate SSMRouter into agent-pool |
-| Exp 04 (routing) | Within 5% of round-robin | Static strategies sufficient |
-| Exp 03 (anomaly) | Detects stuck workers >3 events early | Integrate into health loop + SimpleAO Guard |
-| Exp 03 (anomaly) | Comparable to threshold rules | Static rules sufficient |
+| Experiment | Gate | Result | Decision |
+|------------|------|--------|----------|
+| Exp 04 (routing) | SSM beats round-robin by >10% | **NOT MET** (+3.4%) | Keep static routing; **switch default to sticky** |
+| Exp 03 (anomaly) | SSM detects >3 steps earlier than tuned threshold | **PASSED** (+3.7 steps) | Phase 3: validate on real agent-pool traces |
+| Exp 05 (TSE velocity) | SSM beats moving average by >10% | **PASSED** (+49.3%) | Phase 3: validate on real TSE weekly history |
 
-See `docs/integration_plan.md` for detailed production integration instructions per project.
+Gates passing on synthetic data → proceed to Phase 3 (real trace validation), not production integration.
+
+See `docs/experiment_results_analysis.md` for full results and `docs/integration_plan.md` for integration decisions.
 
 ## Architecture
 

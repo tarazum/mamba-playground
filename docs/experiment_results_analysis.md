@@ -6,7 +6,7 @@
 
 ## What Is It?
 
-We ran four experiments to test whether a new type of neural model (SSM / Mamba) can outperform the simple rule-based logic currently used in our three production systems. The core bet was:
+We ran five experiments to test whether a new type of neural model (SSM / Mamba) can outperform the simple rule-based logic currently used in our three production systems. The core bet was:
 
 > **Transformers = reasoning** (keep for LLM prompts, planning, code generation)
 > **Mamba/SSM = state tracking** (use for routing, monitoring, anomaly detection)
@@ -31,22 +31,24 @@ Traditional approach:       SSM approach:
 
 ---
 
-## The Four Experiments
+## The Five Experiments
 
 ```
 mamba-playground/experiments/
 ├── 01_setup_check.py     ← Is the machine ready? What are the speed limits?
 ├── 02_event_classify.py  ← Can SSM recognize pool health states from event streams?
 ├── 03_anomaly_detect.py  ← Can SSM detect a failing worker earlier than a rule-based check?
-└── 04_routing_sim.py     ← Does SSM routing beat round-robin / least-busy?
+├── 04_routing_sim.py     ← Does SSM routing beat round-robin / least-busy / sticky?
+└── 05_tse_velocity.py    ← Can SSM classify trend velocity better than a moving average?
 ```
 
-| Exp | Question | Type | Gate? |
-|-----|----------|------|-------|
-| 01 | Environment ready? | Setup | No |
-| 02 | Classify normal/degrading/stuck | Sanity check | No |
-| 03 | Detect anomaly onset earlier | **Secondary gate** | Yes |
-| 04 | Route requests better | **Primary gate** | Yes |
+| Exp | Question | Type | Gate? | Result |
+|-----|----------|------|-------|--------|
+| 01 | Environment ready? | Setup | No | ✅ CPU ready |
+| 02 | Classify normal/degrading/stuck | Sanity check | No | ✅ 100% (data too easy) |
+| 03 | Detect anomaly onset earlier | **Secondary gate** | Yes | ✅ PASSED +3.7 steps |
+| 04 | Route requests better | **Primary gate** | Yes | ❌ NOT MET +3.4% |
+| 05 | Classify trend velocity | **TSE gate** | Yes | ✅ PASSED +49.3% |
 
 ---
 
@@ -56,12 +58,12 @@ mamba-playground/experiments/
 flowchart TD
     A[01 Setup Check\nCPU speed baseline] --> B[02 Classification\nSSM vs LSTM accuracy]
     B --> C[03 Anomaly Detection\nSSM vs threshold rules]
-    C --> D[04 Routing Simulation\nSSM vs round-robin / cost-aware]
-    D --> E{Gate Decisions}
-    E -->|Primary gate passed| F[Integrate SSMRouter\ninto agent-pool]
-    E -->|Primary gate failed| G[Keep static strategies\ncost-aware is sufficient]
-    E -->|Secondary gate passed| H[Integrate SSMAnomalyDetector\ninto health loop]
-    E -->|Secondary gate failed| I[Keep static health checks\nthreshold rules OK]
+    C --> D[04 Routing Simulation\nSSM vs round-robin / sticky / cost-aware]
+    D --> E[05 TSE Velocity\nSSM vs moving average]
+    E --> F{Gate Decisions}
+    F -->|Primary gate NOT MET +3.4%| G[Switch to sticky routing\nno SSM router integration]
+    F -->|Secondary gate PASSED +3.7 steps| H[Phase 3: validate SSMAnomalyDetector\non real agent-pool traces]
+    F -->|TSE gate PASSED +49.3%| I[Phase 3: validate SSMVelocityTracker\non real TSE weekly history]
 ```
 
 ---
@@ -217,12 +219,12 @@ flowchart LR
 ```mermaid
 flowchart TD
     A[All experiments complete] --> B{Primary gate\nExp 04}
-    B -->|NOT MET +1%| C[Keep cost-aware routing\nin agent-pool]
+    B -->|NOT MET +3.4%| C[Switch to sticky routing\nin agent-pool]
     A --> D{Secondary gate\nExp 03}
-    D -->|PASSED 0.25 steps| E[Phase 2: validate on\nreal agent-pool traces]
+    D -->|PASSED +3.7 steps| E[Phase 3: validate on\nreal agent-pool traces]
     E --> F[If confirmed: add to\nSimpleAO Guard system]
     A --> G{TSE velocity gate\nExp 05}
-    G -->|PASSED +49.3%| H[Phase 2: validate on\nreal TSE weekly history]
+    G -->|PASSED +49.3%| H[Phase 3: validate on\nreal TSE weekly history]
 ```
 
 | Project | Component | Phase 2 Finding | Next Step |
@@ -279,12 +281,12 @@ trend-signal-engine/
 
 ---
 
-## What Is Exp 05 (TSE Velocity Tracking)?
+## Why Exp 05 (TSE Velocity Tracking) Is Different
 
-The routing problem (Exp 04) was solved by a static rule. But TSE has a **different** problem:
+The routing problem (Exp 04) was solved by a static rule. TSE has a **structurally different** problem that genuinely favours SSMs:
 
 ```
-Current TSE:                          SSM TSE (proposed):
+Current TSE:                          SSM TSE (validated by Exp 05):
 ┌──────────────────────────────┐      ┌─────────────────────────────────┐
 │ Week 1: process all signals  │      │ Week 1: run SSM, save state     │
 │ Week 2: process all signals  │  vs  │ Week 2: load state, update SSM  │
@@ -299,12 +301,11 @@ Current TSE:                          SSM TSE (proposed):
 | Classify: rising/peaking/declining/noise | Moving average slope | SSMClassifier on weekly sequences |
 | State persistence | Reprocess all history each run | Persist compressed SSM hidden state (small binary blob) |
 
-**The test is already wired up.** `generate_trend_velocity_dataset()` in `data/generators.py` produces 200 synthetic trends × 12 weeks with 4 velocity labels. Exp 05 would compare:
+**Exp 05 used:** `generate_trend_velocity_dataset()` in `data/generators.py` — 200 synthetic trends × 12 weeks with 4 velocity labels. `SSMClassifier` vs `MovingAverageClassifier` (slope of last 3 weeks).
 
-- `SSMClassifier` on 12-week sequences
-- `MovingAverageClassifier` (slope of last 3 weeks)
+**TSE gate PASSED with +49.3%.** The SSM's full-trajectory view is the structural advantage — a signal rising for 12 weeks appears flat in a 3-week window because it approaches its ceiling. The SSM sees the entire shape.
 
-This is a structurally different problem from routing — here the SSM's long-range temporal compression has a genuine advantage over a simple difference.
+Next step: validate on real TSE weekly cluster history. The test infra (`SSMClassifier` + `generate_trend_velocity_dataset`) is ready; only real data is missing.
 
 ---
 
@@ -316,14 +317,20 @@ python experiments/01_setup_check.py
 python experiments/02_event_classify.py
 python experiments/03_anomaly_detect.py
 python experiments/04_routing_sim.py
+python experiments/05_tse_velocity.py
 
 # Run only the gates (skip sanity checks)
 python experiments/03_anomaly_detect.py
 python experiments/04_routing_sim.py
+python experiments/05_tse_velocity.py
+
+# Run smoke tests
+python -m pytest tests/test_smoke.py -v
 
 # Read results
 cat results/03_anomaly_report.json
 cat results/04_routing_report.json
+cat results/05_tse_velocity_report.json
 
 # On Blackwell GPU machine — build mamba-ssm first
 export TORCH_CUDA_ARCH_LIST="12.0"

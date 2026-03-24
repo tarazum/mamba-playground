@@ -2,16 +2,15 @@
 
 > How experiment results map to production decisions in agent-pool, SimpleAO, and TSE.
 
-## Gate Conditions (from CLAUDE.md)
+## Gate Conditions and Phase 2 Outcomes
 
-| Gate | Condition | Decision |
-|------|-----------|----------|
-| **Primary** (Exp 04) | SSM routing beats round-robin by >10% avg quality | Integrate SSMRouter into agent-pool |
-| **Primary** (Exp 04) | Within 5% of round-robin | Keep static strategies; SSM not worth overhead |
-| **Secondary** (Exp 03) | SSM detects stuck workers >3 events before timeout | Integrate SSMAnomalyDetector into agent-pool health loop + SimpleAO Guard |
-| **Secondary** (Exp 03) | Detection lag comparable to threshold rules | Static rules sufficient |
+| Gate | Condition | Phase 2 Result | Decision |
+|------|-----------|---------------|----------|
+| **Primary** (Exp 04) | SSM routing beats round-robin by >10% avg quality | **NOT MET** (+3.4%) | Switch default to **sticky** routing; no SSM router integration |
+| **Secondary** (Exp 03) | SSM detects stuck workers >3 events before tuned threshold | **PASSED** (+3.7 steps) | Phase 3: validate on real agent-pool event traces |
+| **TSE** (Exp 05) | SSM beats moving average by >10% on velocity classification | **PASSED** (+49.3%) | Phase 3: validate on real TSE weekly history |
 
-**Do not integrate before running all four experiments.**
+**Do not integrate before running all five experiments AND validating on real traces.**
 
 ---
 
@@ -21,24 +20,31 @@
 
 The highest-value integration target. Agent pool is a routing and health system — exactly what SSMs are designed for.
 
-**If Exp 04 gate passes:**
+**Exp 04 gate NOT MET — immediate action:**
+
+Switch the default routing strategy in agent-pool from `cost-aware` to `sticky`.
+- Sticky is the most robust strategy tested: only -2.6% on distribution shift vs -14.4% for SSMQualityPredictor and -13.0% for cost-aware
+- Requires no training, no model checkpoint, no new dependencies
+- Change one config value in `agent_pool/router.py`
+
+**If Exp 04 gate is re-tested with real traces and passes:**
 
 ```
 agent_pool/
 ├── router.py          ← add RoutingStrategy.SSM_LEARNED
-│   └── SSMRoutingStrategy: loads trained SSMRouter checkpoint
+│   └── SSMRoutingStrategy: loads trained SSMQualityPredictor checkpoint
 │                        maintains rolling event_history buffer (seq_len=32)
-│                        predicts worker_idx from history on each request
+│                        predicts quality per worker, routes to argmax
 └── workers/
     └── base.py        ← emit WorkerEvent on complete/error (feeds SSM history)
 ```
 
 Integration steps:
 1. Copy `core/ssm.py` into `agent_pool/ssm/` (or install as package)
-2. Add `train_router.py` script: trains SSMRouter offline on recorded pool events
-3. Modify `Router.select()`: add `SSM_LEARNED` case calling `ssm_router.route(history)`
+2. Add `train_quality_predictor.py`: trains SSMQualityPredictor on recorded pool events using masked MSE
+3. Modify `Router.select()`: add `SSM_LEARNED` case calling `ssm_predictor.route(history)`
 4. Add event history buffer to `WorkerPool`: deque of last 32 WorkerEvent features
-5. Serialize trained model checkpoint to `config/ssm_router.pt`
+5. Serialize trained model checkpoint to `config/ssm_quality_predictor.pt`
 6. Load in `build_pool()` when strategy = `ssm_learned`
 
 **If Exp 03 gate passes:**
@@ -90,7 +96,7 @@ Integration focus: **trend velocity tracking** — maintaining state across week
 
 Current TSE problem: each weekly run reprocesses all signals from scratch. Expensive, loses temporal context.
 
-**If SSM works as state compressor (validated by Exp 02 accuracy):**
+**Exp 05 gate PASSED (+49.3%) — validated on synthetic weekly sequences:**
 
 ```
 TSE Stage 2.5 (between Normalize and Embed):
@@ -123,14 +129,17 @@ This replaces the current `DECAY_WINDOW_DAYS` heuristic with a learned velocity 
 
 ## Decision Framework
 
-After running all experiments, use this matrix:
+Phase 2 results (synthetic data) — use this matrix for Phase 3 real-data decisions:
 
-| Exp 04 Result | Exp 03 Result | Recommended Action |
-|---------------|---------------|-------------------|
-| SSM wins (>10%) | SSM early detection | Full integration: router + health loop + velocity |
-| SSM comparable | SSM early detection | Health loop + velocity only; keep static routing |
-| SSM wins (>10%) | Baseline sufficient | Router only; keep static health checks |
-| SSM comparable | Baseline sufficient | No integration — static strategies win |
+| Exp 04 Result | Exp 03 Result | Exp 05 Result | Recommended Action |
+|---------------|---------------|---------------|-------------------|
+| SSM wins (>10%) | SSM early detection | SSM wins | Full integration: router + health loop + velocity |
+| SSM comparable | SSM early detection | SSM wins | **Current outcome**: switch to sticky routing; validate health loop + velocity on real traces |
+| SSM wins (>10%) | Baseline sufficient | SSM wins | Router + velocity only; keep static health checks |
+| SSM comparable | Baseline sufficient | SSM wins | Velocity tracker only; static routing + health checks win |
+| Any | Any | Comparable | Skip TSE velocity integration; DECAY_WINDOW_DAYS sufficient |
+
+**Current Phase 2 row**: SSM comparable routing + SSM early detection + SSM velocity wins → switch to sticky routing; proceed to Phase 3 for health loop and velocity.
 
 ---
 
@@ -158,8 +167,8 @@ When integration is approved:
 |------|-------------|-------|
 | `core/ssm.py` | `agent_pool/ssm/ssm.py` | No modification needed |
 | `core/ssm.py` | `SimpleAO/guard/ssm_core.py` | Same file, different path |
-| Trained `ssm_router.pt` | `agent_pool/config/` | Generated by train script |
-| Trained `ssm_anomaly.pt` | `agent_pool/config/` | Generated by train script |
+| Trained `ssm_quality_predictor.pt` | `agent_pool/config/` | Generated by train script (if Exp 04 passes on real data) |
+| Trained `ssm_anomaly.pt` | `agent_pool/config/` | Generated by train script (after Phase 3 validation) |
 
 The SSM implementation has zero external dependencies beyond PyTorch — safe to copy.
 

@@ -20,11 +20,12 @@
 05_tse_velocity.py   → SSM vs moving average for trend velocity tracking (TSE gate)
 ```
 
-### Gate Decisions
+### Gate Decisions (Phase 2 Results)
 
-See [integration_plan.md](integration_plan.md) for the full decision matrix.
+See [experiment_results_analysis.md](experiment_results_analysis.md) for full analysis and [integration_plan.md](integration_plan.md) for integration guide.
 
-Short version:
-- Exp 04 SSM > round-robin by >10% → integrate router
-- Exp 03 SSM detects >3 steps earlier → integrate health loop
-- Otherwise → static strategies win, no integration needed
+| Exp | Gate | Outcome | Action |
+|-----|------|---------|--------|
+| Exp 04 routing | SSM >10% over round-robin | **NOT MET** (+3.4%) | Switch default to **sticky** routing; no SSM integration |
+| Exp 03 anomaly | SSM >3 steps earlier than tuned threshold | **PASSED** (+3.7 steps) | Phase 3: validate on real agent-pool event traces |
+| Exp 05 TSE velocity | SSM >10% over moving average | **PASSED** (+49.3%) | Phase 3: validate on real TSE weekly history |
