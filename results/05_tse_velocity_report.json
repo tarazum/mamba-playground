@@ -120,9 +120,35 @@
         "noise": 1.0
       },
       "params": 17780,
-      "train_time_s": 96.1
+      "train_time_s": 118.6
     }
   },
   "verdict": "SSM clearly better (+49.3%) \u2014 TSE gate passed; validate on real TSE weekly history before integration; do not replace DECAY_WINDOW_DAYS until real-data validation completes",
-  "delta_ssm_vs_ma": 0.4925
+  "delta_ssm_vs_ma": 0.4925,
+  "hard_variant": {
+    "noise_scale": 4.0,
+    "missing_rate": 0.25,
+    "slope_scale": 0.4,
+    "n_samples": 500,
+    "ssm": {
+      "accuracy": 0.26,
+      "per_class": {
+        "rising": 0.0,
+        "peaking": 0.112,
+        "declining": 0.072,
+        "noise": 0.856
+      }
+    },
+    "moving_average": {
+      "accuracy": 0.276,
+      "per_class": {
+        "rising": 0.0,
+        "peaking": 0.192,
+        "declining": 0.008,
+        "noise": 0.904
+      }
+    },
+    "delta_ssm_vs_ma": -0.016,
+    "note": "SSM evaluated on harder out-of-distribution data without retraining. Accuracy drop vs easy variant reveals whether easy result is a separability artifact."
+  }
 }

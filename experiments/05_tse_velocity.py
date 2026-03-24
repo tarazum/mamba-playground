@@ -316,6 +316,52 @@ def main():
     report["delta_ssm_vs_ma"] = round(delta, 4)
     print(f"\nVerdict: {verdict}")
 
+    # ── Hard variant: noisier trends, partial missing weeks, weaker slopes ──────
+    # Evaluates the trained SSM on harder out-of-distribution data.
+    # Tests whether the 100% easy accuracy is a separability artifact.
+    # noise_scale=4.0: 4x noise; missing_rate=0.25: 25% weeks zeroed; slope_scale=0.4: weak slopes
+    print(f"\n--- Hard variant (noise×4, 25% missing weeks, slope×0.4) ---")
+    X_hard, y_hard = generate_trend_velocity_dataset(
+        CFG["n_trends"] // 4,   # smaller set — this is a robustness check, not a new training task
+        CFG["n_weeks"],
+        seed=SEED + 777,
+        noise_scale=4.0,
+        missing_rate=0.25,
+        slope_scale=0.4,
+    )
+    hard_loader = DataLoader(
+        TensorDataset(
+            torch.tensor(X_hard, dtype=torch.float32),
+            torch.tensor(y_hard, dtype=torch.long),
+        ),
+        CFG["batch_size"],
+    )
+    ssm_hard_eval = evaluate(ssm_model, hard_loader)
+    ma_hard_eval  = evaluate(ma, X_hard, y_hard, is_sklearn=True)
+    hard_delta = ssm_hard_eval["accuracy"] - ma_hard_eval["accuracy"]
+
+    print(f"SSM hard accuracy:  {ssm_hard_eval['accuracy']:.3f}")
+    print(f"MA  hard accuracy:  {ma_hard_eval['accuracy']:.3f}  (delta: {hard_delta:+.3f})")
+    print("Per-class (hard):")
+    for cls in CLASS_NAMES:
+        s = ssm_hard_eval["per_class"].get(cls, 0)
+        m = ma_hard_eval["per_class"].get(cls, 0)
+        print(f"  {cls:<12} SSM={s:.3f}  MA={m:.3f}  Δ={s-m:+.3f}")
+
+    report["hard_variant"] = {
+        "noise_scale": 4.0,
+        "missing_rate": 0.25,
+        "slope_scale": 0.4,
+        "n_samples": len(X_hard),
+        "ssm": ssm_hard_eval,
+        "moving_average": ma_hard_eval,
+        "delta_ssm_vs_ma": round(hard_delta, 4),
+        "note": (
+            "SSM evaluated on harder out-of-distribution data without retraining. "
+            "Accuracy drop vs easy variant reveals whether easy result is a separability artifact."
+        ),
+    }
+
     out = results_dir / "05_tse_velocity_report.json"
     with open(out, "w") as f:
         json.dump(report, f, indent=2)

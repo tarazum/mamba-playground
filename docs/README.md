@@ -6,6 +6,7 @@
 |----------|---------|
 | [experiment_results_analysis.md](experiment_results_analysis.md) | Full results analysis with diagrams, lessons learned, and integration decisions |
 | [integration_plan.md](integration_plan.md) | Code-level integration guide: what to copy where, with snippets |
+| [real_trace_schema.md](real_trace_schema.md) | Phase 3 schema contract: expected event fields for agent-pool, SimpleAO, and TSE data collection |
 | [project_review_feedback.md](project_review_feedback.md) | Independent review of the project goal, experiment quality, current results, and recommended next steps |
 
 ## Quick Reference

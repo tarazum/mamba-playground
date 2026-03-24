@@ -249,6 +249,28 @@ def evaluate_detection_lag(
     }
 
 
+def compute_operating_points(
+    scores: np.ndarray,
+    onsets: np.ndarray,
+    thresholds: list | None = None,
+) -> list[dict]:
+    """
+    ROC-style operating-point table.
+    Sweeps detection thresholds and records FP rate, miss rate, mean lag.
+    Useful for choosing a production threshold given the FP vs lag tradeoff.
+    """
+    if thresholds is None:
+        thresholds = [0.30, 0.40, 0.50, 0.60, 0.65, 0.70, 0.80, 0.90]
+    return [
+        {
+            "threshold": t,
+            **{k: v for k, v in evaluate_detection_lag(scores, t, onsets).items()
+               if k in ("false_positive_rate", "missed_rate", "mean_lag_steps")},
+        }
+        for t in thresholds
+    ]
+
+
 def evaluate_by_onset_bucket(
     scores: np.ndarray,
     threshold: float,
@@ -401,6 +423,7 @@ def main():
     ssm_buckets    = evaluate_by_onset_bucket(ssm_scores, CFG["detection_threshold"], onsets_test, seq_len)
     ssm_shift_auc  = compute_auc(y_shift.flatten(), ssm_shift_scores.flatten())
     ssm_shift_lag  = evaluate_detection_lag(ssm_shift_scores, CFG["detection_threshold"], onsets_shift)
+    ssm_op_points  = compute_operating_points(ssm_scores, onsets_test)
 
     print(f"Test AUC={ssm_auc:.3f}  "
           f"Lag={ssm_lag['mean_lag_steps'] if not ssm_lag['missed_all'] else 'missed all'}  "
@@ -410,6 +433,7 @@ def main():
         "test_auc": round(ssm_auc, 4),
         "detection_lag": ssm_lag,
         "onset_buckets": ssm_buckets,
+        "operating_points": ssm_op_points,
         "shift_test_auc": round(ssm_shift_auc, 4),
         "shift_detection_lag": ssm_shift_lag,
         "params": n_params,
@@ -439,6 +463,13 @@ def main():
     for bucket, stats in ssm_buckets.items():
         lag_str = "missed all" if stats["mean_lag_steps"] is None else f"{stats['mean_lag_steps']:.2f}"
         print(f"    {bucket:<18} n={stats['n']:3d}  lag={lag_str}  miss={stats['missed_rate']:.3f}")
+
+    print("\n  SSM operating points (FP rate vs lag tradeoff):")
+    print(f"  {'Threshold':>10}  {'FP rate':>8}  {'Miss rate':>10}  {'Mean lag':>10}")
+    print(f"  {'-' * 44}")
+    for pt in ssm_op_points:
+        lag_str = "—" if pt["mean_lag_steps"] is None else f"{pt['mean_lag_steps']:.2f}"
+        print(f"  {pt['threshold']:>10.2f}  {pt['fp_rate']:>8.3f}  {pt['missed_rate']:>10.3f}  {lag_str:>10}")
 
     # Verdict — gate condition: SSM detects, threshold does not (or detects later)
     gate_threshold_steps = 3

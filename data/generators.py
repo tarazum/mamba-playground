@@ -261,6 +261,9 @@ def generate_trend_velocity_dataset(
     n_trends: int = 200,
     n_weeks: int = 12,
     seed: int = 42,
+    noise_scale: float = 1.0,
+    missing_rate: float = 0.0,
+    slope_scale: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Simulate TSE running weekly. Each trend has a cluster_size over 12 weeks.
@@ -270,6 +273,11 @@ def generate_trend_velocity_dataset(
         1 = peaking   (cluster size cresting then declining)
         2 = declining (cluster size decreasing)
         3 = noise     (random, no clear trend)
+
+    Args:
+        noise_scale:  multiplier on base noise amplitude (1.0 = default easy, 3.0+ = hard)
+        missing_rate: fraction of weeks randomly zeroed out (simulates missing TSE runs)
+        slope_scale:  multiplier on rising/declining slopes (1.0 = default, 0.4 = weak, near-noise)
 
     Returns:
         X: float32 (n_trends, n_weeks, 3)  — [cluster_size_norm, diversity_norm, score_norm]
@@ -292,23 +300,34 @@ def generate_trend_velocity_dataset(
             weeks = np.zeros((n_weeks, 3), dtype=np.float32)
             t = np.linspace(0, 1, n_weeks)
 
+            base_noise = 0.05 * noise_scale
+            slope = 0.8 * slope_scale
+
             if label == 0:  # rising
-                base = 0.1 + t * 0.8
-                noise = rng.normal(0, 0.05, n_weeks)
+                base = 0.5 - slope / 2 + t * slope
+                noise = rng.normal(0, base_noise, n_weeks)
             elif label == 1:  # peaking
                 peak = rng.uniform(0.4, 0.7)
                 base = np.where(t < peak, t / peak, 1.0 - (t - peak) / (1.0 - peak))
-                noise = rng.normal(0, 0.05, n_weeks)
+                base = 0.5 + (base - 0.5) * slope_scale
+                noise = rng.normal(0, base_noise, n_weeks)
             elif label == 2:  # declining
-                base = 0.9 - t * 0.8
-                noise = rng.normal(0, 0.05, n_weeks)
+                base = (0.5 + slope / 2) - t * slope
+                noise = rng.normal(0, base_noise, n_weeks)
             else:  # noise
                 base = rng.uniform(0.1, 0.9, n_weeks)
-                noise = rng.normal(0, 0.1, n_weeks)
+                noise = rng.normal(0, 0.1 * noise_scale, n_weeks)
 
             cluster_size = np.clip(base + noise, 0.0, 1.0)
-            diversity = np.clip(cluster_size * rng.uniform(0.7, 1.0) + rng.normal(0, 0.05, n_weeks), 0, 1)
-            score = np.clip((cluster_size * 0.6 + diversity * 0.4) + rng.normal(0, 0.03, n_weeks), 0, 1)
+            diversity = np.clip(cluster_size * rng.uniform(0.7, 1.0) + rng.normal(0, base_noise, n_weeks), 0, 1)
+            score = np.clip((cluster_size * 0.6 + diversity * 0.4) + rng.normal(0, base_noise * 0.6, n_weeks), 0, 1)
+
+            # Simulate missing weeks (e.g. TSE run skipped) by zeroing out steps
+            if missing_rate > 0.0:
+                missing_mask = rng.random(n_weeks) < missing_rate
+                cluster_size[missing_mask] = 0.0
+                diversity[missing_mask]    = 0.0
+                score[missing_mask]        = 0.0
 
             weeks[:, 0] = cluster_size
             weeks[:, 1] = diversity

@@ -48,7 +48,7 @@ mamba-playground/experiments/
 | 02 | Classify normal/degrading/stuck | Sanity check | No | ✅ 100% (data too easy) |
 | 03 | Detect anomaly onset earlier | **Secondary gate** | Yes | ✅ PASSED +3.7 steps |
 | 04 | Route requests better | **Primary gate** | Yes | ❌ NOT MET +3.4% |
-| 05 | Classify trend velocity | **TSE gate** | Yes | ✅ PASSED +49.3% |
+| 05 | Classify trend velocity | **TSE gate** | Yes | ✅ PASSED +49.3% (easy); ⚠️ near-chance on hard variant |
 
 ---
 
@@ -117,7 +117,7 @@ stateDiagram-v2
 | Model | AUC | Mean lag | Miss rate | FP rate | Shift AUC | Shift lag | Shift FP rate |
 |-------|-----|---------|-----------|---------|-----------|-----------|--------------|
 | SSMAnomalyDetector | **0.978** | **3.0 steps** | **0%** | 39.0% | 0.996 | 0.00 | ⚠️ **100%** |
-| ThresholdDetector (tuned k=0.5) | 0.962 | 6.65 steps | 0% | **17.7%** | **0.931** | 3.85 | — |
+| ThresholdDetector (tuned k=0.5) | 0.962 | 6.65 steps | 0% | **17.7%** | **0.931** | **3.85** | 52.5% |
 
 > ⚠️ The SSM's shift lag of 0.00 and AUC of 0.996 are misleading: `false_positive_rate = 1.0` on the shift set means the model fires before anomaly onset on every shifted sequence. It is always-on under the shifted distribution, not genuinely early. Do not interpret the shift result as "generalises well".
 
@@ -184,15 +184,29 @@ flowchart LR
 
 12 weeks × 3 features per trend. 4 classes: rising / peaking / declining / noise.
 
+**Easy variant (default synthetic data):**
+
 | Model | Accuracy | Rising | Peaking | Declining | Noise |
 |-------|----------|--------|---------|-----------|-------|
 | SSMClassifier | **1.000** | **1.000** | **1.000** | **1.000** | **1.000** |
 | MovingAverage (last 3 wks) | 0.507 | 0.105 | 0.982 | 0.033 | 0.856 |
 | **Delta** | **+49.3%** | +89.5% | +1.8% | +96.7% | +14.4% |
 
-> **TSE gate: PASSED with +49.3%.** The strongest result of all five experiments.
+> **TSE gate: PASSED with +49.3%.**
 
-**Why the moving average fails on rising and declining:**
+**Hard variant (noise×4, 25% missing weeks, slope×0.4 — separability stress test):**
+
+| Model | Accuracy | Rising | Peaking | Declining | Noise |
+|-------|----------|--------|---------|-----------|-------|
+| SSMClassifier | 0.260 | 0.000 | 0.112 | 0.072 | 0.856 |
+| MovingAverage (last 3 wks) | 0.276 | 0.000 | 0.192 | 0.008 | 0.904 |
+| **Delta** | **−1.6%** | 0.0% | −8.0% | +6.4% | −4.8% |
+
+> ⚠️ **Hard variant: both models collapse to near-random (25% chance level).** The SSM has no meaningful advantage when signal-to-noise is reduced. The 100% easy accuracy is largely a separability artifact — the synthetic easy dataset is clean enough that even a threshold baseline could solve it with the right features.
+
+**What this means:** The Exp 05 gate passing does not demonstrate SSM superiority on realistic data. It demonstrates the SSM can fit clean separable patterns. Whether the SSM offers genuine advantage over a moving average on real TSE trend history remains an open question.
+
+**Why the moving average fails on rising and declining (easy data):**
 
 ```
 "Rising" trend (week 1→12):   0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8  0.85  0.88  0.90  0.91
@@ -203,16 +217,7 @@ flowchart LR
 SSM sees all 12 weeks → recognizes monotonic rise from start → "rising" ✓
 ```
 
-The moving average has the same blind spot that `DECAY_WINDOW_DAYS` has in TSE:
-a signal that has been rising for months looks **flat** in a short recent window because it is approaching its ceiling. The SSM sees the full trajectory shape.
-
-```mermaid
-flowchart LR
-    A[Week 1-12\nFull sequence] -->|SSMClassifier| B[sees full shape\n→ 100% accuracy]
-    C[Week 10-12\nLast 3 weeks only] -->|MovingAverage| D[sees flattening\n→ misclassifies rising\nas noise]
-    B --> E[✓ Correct: RISING]
-    D --> F[✗ Wrong: NOISE]
-```
+This advantage disappears in the hard variant — noisier inputs prevent both models from reliably tracking trajectory shape.
 
 ---
 
@@ -278,7 +283,7 @@ trend-signal-engine/
 | AUC and miss rate can contradict | v1 threshold: AUC 0.965 but miss rate 100% | AUC ranks correctly but threshold selection can still fail completely |
 | High FP rate is a practical concern | SSM 39% FP vs threshold 17.7% — more trigger-happy | Detection threshold needs tuning to 0.65+ before production health loop use |
 | Cost-aware fails under adversarial conditions | Cost-aware routes to free (CLI) workers — exactly the ones degrading | Business-objective heuristics can have correlated failure modes |
-| SSM is strong where shape matters | Exp 05: +49.3% over moving average for velocity | Sequential pattern recognition over long horizons is the SSM's genuine strength |
+| SSM is strong where shape matters — on clean data | Exp 05 easy: +49.3% over MA; Exp 05 hard: −1.6% (near chance) | 100% easy accuracy is a separability artifact; hard variant (noise×4, 25% missing weeks) collapsed both models to random chance — SSM advantage on real TSE data is unproven |
 | CPU training time is a real cost | Exp 04 quality predictor: 36 min on CPU; Exp 03 SSM: 3.4 min | GPU (RTX 5070) needed for iteration speed; CPU is fine for inference evaluation |
 
 ---
