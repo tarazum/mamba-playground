@@ -297,8 +297,8 @@ def main():
     if delta > 0.10:
         verdict = (
             f"SSM clearly better ({delta:+.1%}) — "
-            f"worth integrating as TSE velocity tracker; "
-            f"replace DECAY_WINDOW_DAYS heuristic with learned model"
+            f"TSE gate passed; validate on real TSE weekly history before integration; "
+            f"do not replace DECAY_WINDOW_DAYS until real-data validation completes"
         )
     elif delta > -0.05:
         verdict = (

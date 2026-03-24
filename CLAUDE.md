@@ -78,6 +78,6 @@ Experiment 05 (TSE velocity) is the TSE gate:
 - If SSM beats moving-average baseline by >10% on velocity classification → candidate for TSE velocity tracker
 - If comparable → DECAY_WINDOW_DAYS heuristic is sufficient
 
-**Gates passing on synthetic data means: proceed to Phase 2 (real trace validation), not production integration.**
+**Gates passing on synthetic data means: proceed to Phase 3 (real trace validation), not production integration.**
 
 Do not integrate Mamba into production systems before running all five experiments AND validating on real event traces.

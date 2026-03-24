@@ -114,10 +114,12 @@ stateDiagram-v2
     DetectedThreshold --> [*]
 ```
 
-| Model | AUC | Mean lag | Miss rate | FP rate | Shift AUC | Shift lag |
-|-------|-----|---------|-----------|---------|-----------|-----------|
-| SSMAnomalyDetector | **0.978** | **3.0 steps** | **0%** | 39.0% | **0.996** | **0.00** |
-| ThresholdDetector (tuned k=0.5) | 0.962 | 6.65 steps | 0% | **17.7%** | 0.931 | 3.85 |
+| Model | AUC | Mean lag | Miss rate | FP rate | Shift AUC | Shift lag | Shift FP rate |
+|-------|-----|---------|-----------|---------|-----------|-----------|--------------|
+| SSMAnomalyDetector | **0.978** | **3.0 steps** | **0%** | 39.0% | 0.996 | 0.00 | ⚠️ **100%** |
+| ThresholdDetector (tuned k=0.5) | 0.962 | 6.65 steps | 0% | **17.7%** | **0.931** | 3.85 | — |
+
+> ⚠️ The SSM's shift lag of 0.00 and AUC of 0.996 are misleading: `false_positive_rate = 1.0` on the shift set means the model fires before anomaly onset on every shifted sequence. It is always-on under the shifted distribution, not genuinely early. Do not interpret the shift result as "generalises well".
 
 > **Secondary gate: PASSED.** SSM detects 3.7 steps earlier than the tuned threshold. Gate requires ≥3 steps.
 
@@ -127,11 +129,11 @@ stateDiagram-v2
 
 **Onset-bucket breakdown (SSM):**
 
-| Onset position | n | SSM lag | Interpretation |
-|----------------|---|---------|----------------|
-| Early (≤33%) | 99 | 7.01 steps | Anomaly starts before model has normal baseline |
-| Mid (33–66%) | 201 | 1.02 steps | Best performance — enough normal context |
-| Out-of-range shift (68–80%) | 200 | 0.00 steps | Late onset = immediate detection, generalises well |
+| Onset position | n | SSM lag | FP rate | Interpretation |
+|----------------|---|---------|---------|----------------|
+| Early (≤33%) | 99 | 7.01 steps | — | Anomaly starts before model has enough normal baseline |
+| Mid (33–66%) | 201 | 1.02 steps | — | Best performance — sufficient normal context established |
+| Out-of-range shift (68–80%) | 200 | 0.00 steps | **100%** | ⚠️ SSM fires before onset on every shifted sequence — lag is 0 because it already triggered, not because it detected correctly. This is over-triggering, not generalisation. |
 
 ---
 

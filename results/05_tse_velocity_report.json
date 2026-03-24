@@ -123,6 +123,6 @@
       "train_time_s": 96.1
     }
   },
-  "verdict": "SSM clearly better (+49.3%) \u2014 worth integrating as TSE velocity tracker; replace DECAY_WINDOW_DAYS heuristic with learned model",
+  "verdict": "SSM clearly better (+49.3%) \u2014 TSE gate passed; validate on real TSE weekly history before integration; do not replace DECAY_WINDOW_DAYS until real-data validation completes",
   "delta_ssm_vs_ma": 0.4925
 }

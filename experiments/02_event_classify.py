@@ -225,7 +225,7 @@ def main():
         print(f"  {cls:10s}: {acc:.3f}")
 
     if delta > 0.05:
-        verdict = "SSM clearly better — worth integrating into agent-pool router"
+        verdict = "SSM clearly better — sanity check passed; synthetic data too separable for integration decisions"
     elif delta > -0.05:
         verdict = "SSM comparable to LSTM — both viable; SSM preferred for streaming"
     else:
