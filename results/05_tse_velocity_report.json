@@ -120,7 +120,7 @@
         "noise": 1.0
       },
       "params": 17780,
-      "train_time_s": 94.5
+      "train_time_s": 96.1
     }
   },
   "verdict": "SSM clearly better (+49.3%) \u2014 worth integrating as TSE velocity tracker; replace DECAY_WINDOW_DAYS heuristic with learned model",

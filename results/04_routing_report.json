@@ -18,103 +18,164 @@
     "integrate_threshold": 0.1,
     "comparable_threshold": 0.05
   },
-  "strategies": {
+  "in_distribution": {
     "round-robin": {
       "strategy": "round-robin",
       "n_episodes": 200,
       "avg_latency_ms": 254.84,
       "p95_latency_ms": 257.65,
       "error_rate": 0.054,
-      "avg_cost_usd": 0.2,
-      "composite_quality": 0.6016,
-      "sim_time_s": 0.7
+      "avg_cost_usd": 0.001,
+      "composite_quality": 0.8326,
+      "sim_time_s": 0.49
     },
     "least-busy": {
       "strategy": "least-busy",
       "n_episodes": 200,
-      "avg_latency_ms": 254.84,
-      "p95_latency_ms": 257.65,
-      "error_rate": 0.054,
-      "avg_cost_usd": 0.2,
-      "composite_quality": 0.6016,
-      "sim_time_s": 0.71
+      "avg_latency_ms": 221.74,
+      "p95_latency_ms": 223.7,
+      "error_rate": 0.0336,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.8598,
+      "sim_time_s": 0.74
     },
     "cost-aware": {
       "strategy": "cost-aware",
       "n_episodes": 200,
-      "avg_latency_ms": 243.19,
-      "p95_latency_ms": 246.03,
-      "error_rate": 0.0615,
+      "avg_latency_ms": 221.74,
+      "p95_latency_ms": 223.7,
+      "error_rate": 0.0336,
       "avg_cost_usd": 0.0,
-      "composite_quality": 0.6124,
+      "composite_quality": 0.8598,
+      "sim_time_s": 0.54
+    },
+    "sticky": {
+      "strategy": "sticky",
+      "n_episodes": 200,
+      "avg_latency_ms": 244.22,
+      "p95_latency_ms": 268.32,
+      "error_rate": 0.035,
+      "avg_cost_usd": 0.0013,
+      "composite_quality": 0.8462,
       "sim_time_s": 0.51
     },
-    "ssm_router": {
+    "ssm_predictor": {
       "strategy": "ssm",
       "n_episodes": 200,
-      "avg_latency_ms": 243.53,
-      "p95_latency_ms": 246.44,
-      "error_rate": 0.0615,
-      "avg_cost_usd": 0.005,
-      "composite_quality": 0.612,
+      "avg_latency_ms": 205.79,
+      "p95_latency_ms": 213.3,
+      "error_rate": 0.0401,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.8664,
       "train_result": {
-        "best_val_acc": 1.0,
+        "best_val_loss": 0.0077,
         "history": {
           "train_loss": [
-            0.117,
-            0.0018,
-            0.0006,
-            0.0002,
-            0.0001,
-            0.0001,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
+            0.0181,
+            0.01149,
+            0.0115,
+            0.01149,
+            0.01055,
+            0.01022,
+            0.00859,
+            0.00806,
+            0.00798,
+            0.00792,
+            0.00793,
+            0.0079,
+            0.00787,
+            0.00785,
+            0.00783,
+            0.00781,
+            0.0078,
+            0.00779,
+            0.00778,
+            0.00777
           ],
-          "val_acc": [
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-            1.0
+          "val_loss": [
+            0.01123,
+            0.01123,
+            0.01122,
+            0.01136,
+            0.01023,
+            0.01002,
+            0.00943,
+            0.00775,
+            0.0078,
+            0.00789,
+            0.00801,
+            0.00776,
+            0.00771,
+            0.00772,
+            0.00771,
+            0.00772,
+            0.00774,
+            0.00772,
+            0.0077,
+            0.0077
           ]
         }
       },
-      "n_params": 17445,
-      "train_time_s": 2507.6,
-      "sim_time_s": 212.53
+      "n_params": 17893,
+      "train_time_s": 2160.1,
+      "sim_time_s": 191.54
+    }
+  },
+  "distribution_shift": {
+    "round-robin": {
+      "strategy": "round-robin",
+      "n_episodes": 200,
+      "avg_latency_ms": 367.53,
+      "p95_latency_ms": 372.62,
+      "error_rate": 0.1494,
+      "avg_cost_usd": 0.001,
+      "composite_quality": 0.73,
+      "sim_time_s": 0.67
+    },
+    "least-busy": {
+      "strategy": "least-busy",
+      "n_episodes": 200,
+      "avg_latency_ms": 319.39,
+      "p95_latency_ms": 324.83,
+      "error_rate": 0.1205,
+      "avg_cost_usd": 0.0007,
+      "composite_quality": 0.7691,
+      "sim_time_s": 0.97
+    },
+    "cost-aware": {
+      "strategy": "cost-aware",
+      "n_episodes": 200,
+      "avg_latency_ms": 337.47,
+      "p95_latency_ms": 343.73,
+      "error_rate": 0.1484,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.7478,
+      "sim_time_s": 0.83
+    },
+    "sticky": {
+      "strategy": "sticky",
+      "n_episodes": 200,
+      "avg_latency_ms": 271.2,
+      "p95_latency_ms": 301.45,
+      "error_rate": 0.0528,
+      "avg_cost_usd": 0.002,
+      "composite_quality": 0.8235,
+      "sim_time_s": 0.51
+    },
+    "ssm_predictor": {
+      "strategy": "ssm",
+      "n_episodes": 200,
+      "avg_latency_ms": 342.38,
+      "p95_latency_ms": 394.35,
+      "error_rate": 0.1593,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.7406,
+      "sim_time_s": 191.12
     }
   },
   "deltas": {
-    "ssm_vs_round_robin": 0.0104,
-    "ssm_vs_least_busy": 0.0104,
-    "ssm_vs_cost_aware": -0.0004
+    "ssm_vs_round_robin_in_dist": 0.0338,
+    "ssm_vs_round_robin_shift": 0.0106
   },
-  "verdict": "SSM COMPARABLE to round-robin (delta=+1.0%) \u2014 within 5% \u2192 static strategies sufficient; SSM preferred for streaming/stateful use cases"
+  "verdict": "SSM COMPARABLE to round-robin (delta=+3.4%) \u2014 within 5%; static strategies sufficient; SSM preferred only where temporal state tracking adds independent value"
 }

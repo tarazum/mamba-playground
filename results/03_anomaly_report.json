@@ -1,6 +1,6 @@
 {
   "config": {
-    "n_samples": 1200,
+    "n_samples": 1500,
     "seq_len": 64,
     "input_dim": 6,
     "d_model": 32,
@@ -8,92 +8,147 @@
     "batch_size": 32,
     "epochs": 25,
     "lr": 0.001,
-    "anomaly_onset_frac": 0.5,
+    "onset_range_train": [
+      0.2,
+      0.65
+    ],
+    "onset_range_shift": [
+      0.68,
+      0.8
+    ],
     "detection_threshold": 0.5
   },
   "device": "cpu",
-  "anomaly_onset_step": 32,
+  "onset_range_train": [
+    0.2,
+    0.65
+  ],
+  "onset_range_shift": [
+    0.68,
+    0.8
+  ],
   "models": {
+    "threshold": {
+      "best_k": 0.5,
+      "val_auc": 0.9628,
+      "test_auc": 0.9616,
+      "detection_lag": {
+        "mean_lag_steps": 6.65,
+        "missed_all": false,
+        "missed_rate": 0.0,
+        "false_positive_rate": 0.177,
+        "detected_n": 300
+      },
+      "onset_buckets": {
+        "early (\u226433%)": {
+          "n": 99,
+          "mean_lag_steps": 9.02,
+          "missed_rate": 0.0
+        },
+        "mid (33\u201366%)": {
+          "n": 201,
+          "mean_lag_steps": 5.49,
+          "missed_rate": 0.0
+        }
+      },
+      "shift_test_auc": 0.9309,
+      "shift_detection_lag": {
+        "mean_lag_steps": 3.85,
+        "missed_all": false,
+        "missed_rate": 0.0,
+        "false_positive_rate": 0.525,
+        "detected_n": 200
+      }
+    },
     "ssm": {
-      "best_val_auc": 0.9998735263019505,
+      "best_val_auc": 0.9781585005684782,
       "history": {
         "train_loss": [
-          0.5715,
-          0.3505,
-          0.2985,
-          0.2923,
-          0.2893,
-          0.2884,
-          0.2874,
-          0.2869,
-          0.2852,
-          0.2839,
-          0.2623,
-          0.225,
-          0.1633,
-          0.0952,
-          0.0646,
-          0.0544,
-          0.0462,
-          0.0414,
-          0.038,
-          0.0407,
-          0.0335,
-          0.0298,
-          0.0281,
-          0.027,
-          0.0266
+          0.5654,
+          0.3463,
+          0.3076,
+          0.3014,
+          0.2989,
+          0.3002,
+          0.3052,
+          0.2775,
+          0.2159,
+          0.2013,
+          0.2079,
+          0.1852,
+          0.2104,
+          0.1889,
+          0.1874,
+          0.1894,
+          0.1906,
+          0.1845,
+          0.1826,
+          0.181,
+          0.179,
+          0.1783,
+          0.1771,
+          0.1769,
+          0.1764
         ],
         "val_auc": [
-          0.8769,
-          0.8914,
-          0.8935,
-          0.8915,
-          0.8939,
-          0.8928,
-          0.8937,
-          0.8976,
-          0.8957,
-          0.921,
-          0.9954,
-          0.9982,
-          0.9994,
-          0.9995,
-          0.9996,
-          0.9998,
-          0.9998,
-          0.9997,
-          0.9995,
-          0.9999,
-          0.9998,
-          0.9999,
-          0.9999,
-          0.9999,
-          0.9999
+          0.8763,
+          0.8927,
+          0.8901,
+          0.8958,
+          0.8981,
+          0.8933,
+          0.9114,
+          0.9754,
+          0.9757,
+          0.9754,
+          0.9775,
+          0.9774,
+          0.9774,
+          0.9778,
+          0.9778,
+          0.9774,
+          0.9776,
+          0.9779,
+          0.978,
+          0.978,
+          0.9781,
+          0.9782,
+          0.9781,
+          0.9781,
+          0.9782
         ]
       },
-      "test_auc": 0.9998,
+      "test_auc": 0.9783,
       "detection_lag": {
-        "mean_lag_steps": 0.25,
+        "mean_lag_steps": 3.0,
+        "missed_all": false,
         "missed_rate": 0.0,
-        "false_positive_rate": 0.154,
-        "detected_n": 240
+        "false_positive_rate": 0.39,
+        "detected_n": 300
+      },
+      "onset_buckets": {
+        "early (\u226433%)": {
+          "n": 99,
+          "mean_lag_steps": 7.01,
+          "missed_rate": 0.0
+        },
+        "mid (33\u201366%)": {
+          "n": 201,
+          "mean_lag_steps": 1.02,
+          "missed_rate": 0.0
+        }
+      },
+      "shift_test_auc": 0.9955,
+      "shift_detection_lag": {
+        "mean_lag_steps": 0.0,
+        "missed_all": false,
+        "missed_rate": 0.0,
+        "false_positive_rate": 1.0,
+        "detected_n": 200
       },
       "params": 17825,
-      "train_time_s": 179.4
-    },
-    "threshold": {
-      "test_auc": 0.9645,
-      "detection_lag": {
-        "mean_lag_steps": Infinity,
-        "missed_rate": 1.0,
-        "false_positive_rate": 0.0,
-        "detected_n": 0
-      },
-      "window": 8,
-      "k_sigma": 2.0,
-      "train_time_s": 0.741
+      "train_time_s": 204.1
     }
   },
-  "verdict": "SSM detects inf steps earlier \u2014 meets gate (\u22653 steps) \u2192 integrate into agent-pool health loop"
+  "verdict": "SSM detects 3.7 steps earlier \u2014 meets gate (\u22653); validate on real traces before production integration"
 }

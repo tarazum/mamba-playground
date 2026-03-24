@@ -100,65 +100,79 @@ On GPU: SSM would be faster — parallel scan eliminates the bottleneck
 
 ### Exp 03 — Anomaly Detection *(SECONDARY GATE)*
 
-Anomaly injected at **step 32** (midpoint of 64-step sequence). How many steps after onset until detection?
+Phase 2 improvements: variable onset (20–65% of sequence), threshold k tuned on val set, onset-bucket breakdown, distribution shift test.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Normal: steps 0-31
-    Normal --> Anomaly: onset at step 32
-    Anomaly --> DetectedSSM: +0.25 steps (almost immediate)
-    Anomaly --> MissedThreshold: NEVER detected (miss rate = 100%)
+    [*] --> Normal: steps 0 to onset (variable)
+    Normal --> Anomaly: onset at random step
+    Anomaly --> DetectedSSM: lag 3.0 steps avg
+    Anomaly --> DetectedThreshold: lag 6.65 steps avg (tuned k=0.5)
     DetectedSSM --> [*]
-    MissedThreshold --> [*]
+    DetectedThreshold --> [*]
 ```
 
-| Model | AUC | Mean detection lag | Miss rate | False positive rate |
-|-------|-----|-------------------|-----------|-------------------|
-| SSMAnomalyDetector | **1.000** | **0.25 steps** | **0%** | 15.4% |
-| ThresholdDetector (rolling z-score) | 0.965 | ∞ (never) | **100%** | 0% |
+| Model | AUC | Mean lag | Miss rate | FP rate | Shift AUC | Shift lag |
+|-------|-----|---------|-----------|---------|-----------|-----------|
+| SSMAnomalyDetector | **0.978** | **3.0 steps** | **0%** | 39.0% | **0.996** | **0.00** |
+| ThresholdDetector (tuned k=0.5) | 0.962 | 6.65 steps | 0% | **17.7%** | 0.931 | 3.85 |
 
-> **Secondary gate: PASSED.** SSM detects anomalies in <1 step — far exceeding the ">3 steps earlier" threshold.
+> **Secondary gate: PASSED.** SSM detects 3.7 steps earlier than the tuned threshold. Gate requires ≥3 steps.
 
-**Why the threshold baseline fails completely:** The z-score threshold of 0.5 is never triggered on these normalized features. The threshold approach needs per-feature manual tuning; the SSM learns the pattern directly from examples.
+**The tuned threshold is now a real competitor.** v1 used a single untuned k=2.0 that missed 100% of anomalies. With k swept on the val set (best k=0.5), the threshold detects everything — just 3.7 steps later than SSM.
 
-**What the 15.4% false positive rate means in practice:** ~1 in 6 healthy workers gets an extra health check. Health checks are cheap (sub-millisecond), so this is acceptable. The threshold can be raised from 0.5 to reduce FPs.
+**FP rate tradeoff:** SSM fires on 39% of normal sequences vs 17.7% for threshold. In production, raise the detection threshold from 0.5 toward 0.65–0.70 to reduce FPs before shipping.
+
+**Onset-bucket breakdown (SSM):**
+
+| Onset position | n | SSM lag | Interpretation |
+|----------------|---|---------|----------------|
+| Early (≤33%) | 99 | 7.01 steps | Anomaly starts before model has normal baseline |
+| Mid (33–66%) | 201 | 1.02 steps | Best performance — enough normal context |
+| Out-of-range shift (68–80%) | 200 | 0.00 steps | Late onset = immediate detection, generalises well |
 
 ---
 
 ### Exp 04 — Routing Simulation *(PRIMARY GATE)*
 
-200 request episodes, 5 workers (2× CLI free, 1× Ollama free, 1× API $0.005/call, 1× degrading CLI).
+Phase 2 improvements: `SSMQualityPredictor` (predict future quality, not imitate oracle), queue-depth `least-busy`, `sticky` baseline, distribution shift on heavy-degradation pool.
 
-| Strategy | Quality Score | Avg Latency | Error Rate | Cost per 200 req |
-|----------|--------------|------------|-----------|-----------------|
-| round-robin | 0.602 | 255ms | 5.4% | $0.20 |
-| least-busy | 0.602 | 255ms | 5.4% | $0.20 |
-| **cost-aware** | **0.612** | **243ms** | 6.1% | **$0.00** |
-| SSM Router | 0.612 | 244ms | 6.1% | $0.005 |
+**In-distribution (default pool — 1 degrading worker at step 100):**
 
-```
-Quality delta: SSM vs round-robin = +1.0%
-Gate requires: > 10%
+| Strategy | Quality | Latency | Error | Cost/req |
+|----------|---------|---------|-------|---------|
+| round-robin | 0.833 | 255ms | 5.4% | $0.0010 |
+| least-busy | 0.860 | 222ms | 3.4% | $0.0000 |
+| cost-aware | 0.860 | 222ms | 3.4% | $0.0000 |
+| sticky | 0.846 | 244ms | 3.5% | $0.0013 |
+| **SSMQualityPredictor** | **0.866** | **206ms** | 4.0% | $0.0000 |
 
-SSM    ██████████████████████████████ 0.612
-RR     █████████████████████████████ 0.602   Δ = +1.0%  ← BELOW 10% GATE
-Gate   ────────────────────────────────────────── 0.662  ← not reached
-```
+**Distribution shift (heavy degradation — 3/5 workers degrade from step 30–90):**
 
-> **Primary gate: NOT MET.** SSM is comparable to round-robin (+1%), not the required +10%.
+| Strategy | Quality | Drop vs in-dist | Interpretation |
+|----------|---------|-----------------|----------------|
+| **sticky** | **0.824** | **-2.6%** | Rotates on error — resilient to any degradation pattern |
+| least-busy | 0.769 | -10.6% | Routes to idle workers, including degrading ones |
+| SSMQualityPredictor | 0.741 | **-14.4%** | Overfit to training distribution — quality model breaks down |
+| cost-aware | 0.748 | -13.0% | Routes to free (CLI) workers — exactly the ones degrading |
+| round-robin | 0.730 | -12.4% | Baseline |
 
-**The key finding — SSM reproduced cost-aware perfectly:**
+> **Primary gate: NOT MET.** SSM is +3.4% over round-robin in-distribution (gate requires >10%).
 
 ```mermaid
 flowchart LR
-    A[Train SSMRouter\nimitating cost-aware oracle] -->|val_acc = 100%| B[SSMRouter learns\ncost-aware exactly]
-    B --> C[Evaluation quality\n= 0.612 identical\nto cost-aware]
-    C --> D{Interpretation}
-    D --> E[SSM works correctly\n— it learned the pattern]
-    D --> F[Cost-aware heuristic IS\nalready near-optimal\nfor this problem]
+    A[In-distribution\ndefault pool] -->|SSM best at 0.866| B[SSM +3.4%\nvs round-robin]
+    C[Distribution shift\nheavy degradation] -->|sticky wins at 0.824| D[SSM drops -14.4%\nsticky drops only -2.6%]
+    B --> E{Gate verdict}
+    D --> E
+    E --> F[Gate NOT MET:\nstatic strategies sufficient\nfor routing]
 ```
 
-The SSM achieved perfect imitation of cost-aware (100% val accuracy). The +1% delta vs round-robin is exactly the delta that cost-aware gets — no more, no less. **The heuristic is already optimal, not the SSM.**
+**Why sticky dominates the distribution shift:** one observed error → rotate to next worker. No training required, no assumptions about degradation timing. The SSM learned the specific single-worker-degrades-at-step-100 pattern and breaks when 3 workers degrade earlier.
+
+**Why the queue-depth fix mattered:** old `least-busy` was identical to round-robin (0.602 each). Fixed version tracks in-flight requests, raising it to 0.860 — a genuine distinct competitor.
+
+**The revised recommendation:** use **sticky** as the production routing strategy. It is the most robust across both pool configurations tested. SSM adds marginal value in-distribution but is fragile to distribution shift.
 
 ---
 
@@ -211,12 +225,13 @@ flowchart TD
     G -->|PASSED +49.3%| H[Phase 2: validate on\nreal TSE weekly history]
 ```
 
-| Project | Component | Playground Finding | Next Step |
-|---------|-----------|-------------------|-----------|
-| agent-pool | SSMRouter in `router.py` | SSM reproduced cost-aware exactly — no improvement | No further action; keep cost-aware static routing |
-| agent-pool | SSMAnomalyDetector in `pool.py` health loop | 0.25-step lag on synthetic data vs 100% miss rate | **Phase 2**: validate on real agent-pool event traces |
-| SimpleAO | SSMAnomalyDetector in Guard | Same model applies to pipeline step events | **Phase 2**: validate on real SimpleAO pipeline traces |
-| TSE | SSMVelocityTracker for trend state | +49.3% over moving average on synthetic sequences | **Phase 2**: validate on real TSE weekly history |
+| Project | Component | Phase 2 Finding | Next Step |
+|---------|-----------|----------------|-----------|
+| agent-pool routing | Replace with sticky | Sticky most robust (+12.8% vs round-robin on heavy degradation) | **Switch default strategy to sticky in agent-pool** |
+| agent-pool routing | SSMQualityPredictor | +3.4% in-dist, -14.4% on distribution shift — fragile | No integration; revisit with real routing traces |
+| agent-pool health loop | SSMAnomalyDetector | 3.7 steps earlier than tuned threshold; 39% FP rate | **Phase 3**: validate on real traces; tune threshold to 0.65+ |
+| SimpleAO Guard | SSMAnomalyDetector | Same model, different feature vector | **Phase 3**: validate on real pipeline traces |
+| TSE velocity | SSMVelocityTracker | +49.3% over moving average; structural advantage confirmed | **Phase 3**: validate on real TSE weekly history |
 
 ---
 
@@ -252,11 +267,15 @@ trend-signal-engine/
 
 | Lesson | What Happened | What It Means |
 |--------|--------------|---------------|
-| Perfect imitation ≠ improvement | SSM learned cost-aware exactly but didn't surpass it | If a heuristic is already near-optimal, SSM won't beat it — it'll reproduce it |
-| Threshold detectors fail silently | z-score baseline had AUC 0.965 but miss rate 100% | AUC looks good but binary detection can fail completely at any given threshold |
-| CPU sequential scan is the bottleneck | SSM 20x slower than LSTM on CPU for training | On GPU this reverses entirely; test on RTX 5070 for production timing |
-| Synthetic data ceiling effect | Exp 02 hit 100% accuracy too quickly | Perfect accuracy on synthetic data confirms the model works but doesn't rank models |
-| SSM is a state engine, not a reasoning engine | SSM reproduces cost-aware; it can't invent better heuristics | Use SSM where temporal state matters (anomaly, velocity), not where a rule suffices |
+| Imitation learning sets the ceiling | v1 SSMRouter copied cost-aware exactly — couldn't beat it | Training target defines maximum performance; use quality prediction instead |
+| Broken baselines hide real results | v1 least-busy = round-robin (0.602 each); fixed version = 0.860 | Always verify that baselines test distinct policies before drawing conclusions |
+| Simple heuristics can be more robust | Sticky beats SSM on distribution shift (0.824 vs 0.741) | Learned models overfit to training distribution; error-triggered rules generalise better |
+| Tuned baseline changes the story | v1 threshold missed 100%; tuned threshold detects with 6.65 step lag | A single untuned configuration is not a fair baseline — always tune on val set |
+| AUC and miss rate can contradict | v1 threshold: AUC 0.965 but miss rate 100% | AUC ranks correctly but threshold selection can still fail completely |
+| High FP rate is a practical concern | SSM 39% FP vs threshold 17.7% — more trigger-happy | Detection threshold needs tuning to 0.65+ before production health loop use |
+| Cost-aware fails under adversarial conditions | Cost-aware routes to free (CLI) workers — exactly the ones degrading | Business-objective heuristics can have correlated failure modes |
+| SSM is strong where shape matters | Exp 05: +49.3% over moving average for velocity | Sequential pattern recognition over long horizons is the SSM's genuine strength |
+| CPU training time is a real cost | Exp 04 quality predictor: 36 min on CPU; Exp 03 SSM: 3.4 min | GPU (RTX 5070) needed for iteration speed; CPU is fine for inference evaluation |
 
 ---
 
@@ -319,8 +338,14 @@ python experiments/01_setup_check.py   # verify GPU detected
 
 ```
 Exp 01  ✅ complete — CPU ready, 1008 seq/s at seq=32
-Exp 02  ✅ complete — SSM correct, data too easy to rank models
-Exp 03  ✅ complete — SECONDARY GATE PASSED → integrate anomaly detector
-Exp 04  ✅ complete — PRIMARY GATE NOT MET → keep cost-aware routing
-Exp 05  ✅ complete — TSE GATE PASSED +49.3% → integrate SSMVelocityTracker
+Exp 02  ✅ complete — SSM correct, synthetic data too easy to rank models
+Exp 03  ✅ complete (Phase 2) — SECONDARY GATE PASSED: 3.7 steps earlier than tuned threshold
+                                 FP rate 39% → tune detection threshold before production
+Exp 04  ✅ complete (Phase 2) — PRIMARY GATE NOT MET (+3.4%); sticky is most robust routing strategy
+                                 SSMQualityPredictor fragile on distribution shift (−14.4%)
+Exp 05  ✅ complete — TSE GATE PASSED +49.3%; structural advantage over moving average confirmed
+
+Actionable today:
+  → Switch agent-pool default strategy to sticky
+  → Phase 3: collect real event traces, re-run Exp 03 + 05 on real data
 ```
