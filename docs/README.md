@@ -4,6 +4,7 @@
 
 | Document | Purpose |
 |----------|---------|
+| **[final_resolution.md](final_resolution.md)** | **Final decision per product — read this first** |
 | [experiment_results_analysis.md](experiment_results_analysis.md) | Full results analysis with diagrams, lessons learned, and integration decisions |
 | [integration_plan.md](integration_plan.md) | Code-level integration guide: what to copy where, with snippets |
 | [real_trace_schema.md](real_trace_schema.md) | Phase 3 schema contract: expected event fields for agent-pool, SimpleAO, and TSE data collection |
