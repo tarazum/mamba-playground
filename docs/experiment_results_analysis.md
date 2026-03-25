@@ -1,5 +1,11 @@
 # Mamba Playground — Experiment Results Analysis
 
+> **Archived research context.** The final product decision is in
+> [`final_resolution.md`](final_resolution.md). This document contains
+> the full experimental detail behind that decision.
+
+---
+
 > Can Mamba-style State Space Models replace or improve on static heuristics in agent routing, anomaly detection, and trend tracking?
 
 ---

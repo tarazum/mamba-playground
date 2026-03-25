@@ -1,5 +1,12 @@
 # Mamba Playground — Integration Plan
 
+> **Archived research context.** The final product decision is in
+> [`final_resolution.md`](final_resolution.md). This document describes
+> the integration steps *if* SSMs had been approved — they were not for v1.
+> Use this only if trigger conditions defined in the resolution doc are met.
+
+---
+
 > How experiment results map to production decisions in agent-pool, SimpleAO, and TSE.
 
 ## Gate Conditions and Phase 2 Outcomes

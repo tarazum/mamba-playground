@@ -1,5 +1,15 @@
 # Mamba Playground
 
+> **Research is closed.** The product decision for all three systems is in
+> [`docs/final_resolution.md`](docs/final_resolution.md). The short version:
+> SSMs are not needed in v1 of any product. Build agent-pool → SimpleAO → TSE
+> with simple heuristics first. Reopen this research only if specific trigger
+> conditions are met (defined in the resolution doc).
+>
+> Everything below is archived research context.
+
+---
+
 Research playground to validate whether Mamba-style State Space Models (SSMs) are worth
 integrating into production systems: **agent-pool**, **SimpleAgentsOrchestrator**, and
 **Trend Signal Engine**.
