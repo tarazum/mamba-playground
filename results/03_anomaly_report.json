@@ -30,115 +30,115 @@
   "models": {
     "threshold": {
       "best_k": 0.5,
-      "val_auc": 0.9628,
-      "test_auc": 0.9616,
+      "val_auc": 0.9613,
+      "test_auc": 0.9626,
       "detection_lag": {
-        "mean_lag_steps": 6.65,
+        "mean_lag_steps": 6.84,
         "missed_all": false,
         "missed_rate": 0.0,
-        "false_positive_rate": 0.177,
+        "false_positive_rate": 0.13,
         "detected_n": 300
       },
       "onset_buckets": {
         "early (\u226433%)": {
           "n": 99,
-          "mean_lag_steps": 9.02,
+          "mean_lag_steps": 10.27,
           "missed_rate": 0.0
         },
         "mid (33\u201366%)": {
           "n": 201,
-          "mean_lag_steps": 5.49,
+          "mean_lag_steps": 5.15,
           "missed_rate": 0.0
         }
       },
-      "shift_test_auc": 0.9309,
+      "shift_test_auc": 0.9276,
       "shift_detection_lag": {
-        "mean_lag_steps": 3.85,
+        "mean_lag_steps": 3.95,
         "missed_all": false,
         "missed_rate": 0.0,
-        "false_positive_rate": 0.525,
+        "false_positive_rate": 0.495,
         "detected_n": 200
       }
     },
     "ssm": {
-      "best_val_auc": 0.9781585005684782,
+      "best_val_auc": 0.9781914226585533,
       "history": {
         "train_loss": [
-          0.5654,
-          0.3463,
-          0.3076,
-          0.3014,
-          0.2989,
-          0.3002,
-          0.3052,
-          0.2775,
-          0.2159,
-          0.2013,
-          0.2079,
-          0.1852,
-          0.2104,
+          0.5652,
+          0.3465,
+          0.3072,
+          0.3021,
+          0.3006,
+          0.2999,
+          0.2993,
+          0.3006,
+          0.2933,
+          0.2385,
+          0.2119,
+          0.1933,
+          0.1891,
+          0.1884,
+          0.1909,
           0.1889,
-          0.1874,
-          0.1894,
-          0.1906,
-          0.1845,
-          0.1826,
-          0.181,
-          0.179,
-          0.1783,
-          0.1771,
-          0.1769,
-          0.1764
+          0.1905,
+          0.1833,
+          0.1798,
+          0.1788,
+          0.178,
+          0.1782,
+          0.1768,
+          0.177,
+          0.1762
         ],
         "val_auc": [
-          0.8763,
-          0.8927,
-          0.8901,
-          0.8958,
-          0.8981,
-          0.8933,
-          0.9114,
-          0.9754,
-          0.9757,
-          0.9754,
-          0.9775,
+          0.8809,
+          0.8894,
+          0.8922,
+          0.89,
+          0.8954,
+          0.8978,
+          0.8978,
+          0.9198,
+          0.956,
           0.9774,
-          0.9774,
+          0.9773,
           0.9778,
-          0.9778,
-          0.9774,
           0.9776,
           0.9779,
           0.978,
-          0.978,
+          0.9772,
+          0.9772,
+          0.9779,
+          0.9779,
+          0.9781,
           0.9781,
           0.9782,
+          0.9782,
           0.9781,
-          0.9781,
-          0.9782
+          0.9781
         ]
       },
-      "test_auc": 0.9783,
+      "test_auc": 0.9785,
       "detection_lag": {
-        "mean_lag_steps": 3.0,
+        "mean_lag_steps": 2.99,
         "missed_all": false,
         "missed_rate": 0.0,
-        "false_positive_rate": 0.39,
+        "false_positive_rate": 0.373,
         "detected_n": 300
       },
       "onset_buckets": {
         "early (\u226433%)": {
           "n": 99,
-          "mean_lag_steps": 7.01,
+          "mean_lag_steps": 6.94,
           "missed_rate": 0.0
         },
         "mid (33\u201366%)": {
           "n": 201,
-          "mean_lag_steps": 1.02,
+          "mean_lag_steps": 1.05,
           "missed_rate": 0.0
         }
       },
-      "shift_test_auc": 0.9955,
+      "shift_test_auc": 0.9957,
       "shift_detection_lag": {
         "mean_lag_steps": 0.0,
         "missed_all": false,
@@ -146,9 +146,95 @@
         "false_positive_rate": 1.0,
         "detected_n": 200
       },
+      "threshold_sweep": [
+        {
+          "threshold": 0.3,
+          "fp_rate": 0.523,
+          "mean_lag_steps": 1.7,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.35,
+          "fp_rate": 0.493,
+          "mean_lag_steps": 2.03,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.4,
+          "fp_rate": 0.45,
+          "mean_lag_steps": 2.31,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.45,
+          "fp_rate": 0.403,
+          "mean_lag_steps": 2.67,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.5,
+          "fp_rate": 0.373,
+          "mean_lag_steps": 2.99,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.55,
+          "fp_rate": 0.353,
+          "mean_lag_steps": 3.36,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.6,
+          "fp_rate": 0.303,
+          "mean_lag_steps": 3.74,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.65,
+          "fp_rate": 0.27,
+          "mean_lag_steps": 4.23,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.7,
+          "fp_rate": 0.23,
+          "mean_lag_steps": 4.72,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.75,
+          "fp_rate": 0.157,
+          "mean_lag_steps": 5.21,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.8,
+          "fp_rate": 0.11,
+          "mean_lag_steps": 5.75,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.85,
+          "fp_rate": 0.027,
+          "mean_lag_steps": 6.58,
+          "missed_rate": 0.0
+        },
+        {
+          "threshold": 0.9,
+          "fp_rate": 0.0,
+          "mean_lag_steps": 7.66,
+          "missed_rate": 0.0
+        }
+      ],
+      "fp_matched": {
+        "threshold": 0.8,
+        "fp_rate": 0.11,
+        "mean_lag_steps": 5.75,
+        "missed_rate": 0.0
+      },
       "params": 17825,
-      "train_time_s": 204.1
+      "train_time_s": 79.0
     }
   },
-  "verdict": "SSM detects 3.7 steps earlier \u2014 meets gate (\u22653); validate on real traces before production integration"
+  "verdict": "SSM detects 1.1 steps earlier at matched FP rate \u2014 BELOW gate (3 steps). Raw-0.5 delta was 3.8 steps but at unequal FP rates (SSM 37.3% vs baseline 13.0%)"
 }

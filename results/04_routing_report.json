@@ -26,8 +26,8 @@
       "p95_latency_ms": 257.65,
       "error_rate": 0.054,
       "avg_cost_usd": 0.001,
-      "composite_quality": 0.8326,
-      "sim_time_s": 0.49
+      "composite_quality": 0.8195,
+      "sim_time_s": 0.16
     },
     "least-busy": {
       "strategy": "least-busy",
@@ -37,7 +37,7 @@
       "error_rate": 0.0336,
       "avg_cost_usd": 0.0,
       "composite_quality": 0.8598,
-      "sim_time_s": 0.74
+      "sim_time_s": 0.24
     },
     "cost-aware": {
       "strategy": "cost-aware",
@@ -47,7 +47,7 @@
       "error_rate": 0.0336,
       "avg_cost_usd": 0.0,
       "composite_quality": 0.8598,
-      "sim_time_s": 0.54
+      "sim_time_s": 0.19
     },
     "sticky": {
       "strategy": "sticky",
@@ -56,69 +56,69 @@
       "p95_latency_ms": 268.32,
       "error_rate": 0.035,
       "avg_cost_usd": 0.0013,
-      "composite_quality": 0.8462,
-      "sim_time_s": 0.51
+      "composite_quality": 0.8291,
+      "sim_time_s": 0.15
     },
     "ssm_predictor": {
       "strategy": "ssm",
       "n_episodes": 200,
-      "avg_latency_ms": 205.79,
-      "p95_latency_ms": 213.3,
-      "error_rate": 0.0401,
+      "avg_latency_ms": 181.21,
+      "p95_latency_ms": 183.19,
+      "error_rate": 0.0503,
       "avg_cost_usd": 0.0,
-      "composite_quality": 0.8664,
+      "composite_quality": 0.876,
       "train_result": {
-        "best_val_loss": 0.0077,
+        "best_val_loss": 0.00818,
         "history": {
           "train_loss": [
-            0.0181,
-            0.01149,
-            0.0115,
-            0.01149,
-            0.01055,
-            0.01022,
-            0.00859,
-            0.00806,
-            0.00798,
-            0.00792,
+            0.0179,
+            0.01131,
+            0.01131,
+            0.01131,
+            0.01087,
+            0.00959,
+            0.00807,
             0.00793,
-            0.0079,
             0.00787,
-            0.00785,
-            0.00783,
-            0.00781,
-            0.0078,
             0.00779,
-            0.00778,
-            0.00777
+            0.00776,
+            0.00775,
+            0.00775,
+            0.0077,
+            0.00769,
+            0.00767,
+            0.00766,
+            0.00765,
+            0.00764,
+            0.00763
           ],
           "val_loss": [
-            0.01123,
-            0.01123,
-            0.01122,
-            0.01136,
-            0.01023,
-            0.01002,
-            0.00943,
-            0.00775,
-            0.0078,
-            0.00789,
-            0.00801,
-            0.00776,
-            0.00771,
-            0.00772,
-            0.00771,
-            0.00772,
-            0.00774,
-            0.00772,
-            0.0077,
-            0.0077
+            0.01182,
+            0.01183,
+            0.01183,
+            0.01186,
+            0.0106,
+            0.00871,
+            0.00844,
+            0.00836,
+            0.00829,
+            0.00874,
+            0.00827,
+            0.00829,
+            0.00832,
+            0.0083,
+            0.00818,
+            0.0083,
+            0.00819,
+            0.0082,
+            0.00818,
+            0.00818
           ]
         }
       },
       "n_params": 17893,
-      "train_time_s": 2160.1,
-      "sim_time_s": 191.54
+      "train_time_s": 743.8,
+      "sim_time_s": 89.17
     }
   },
   "distribution_shift": {
@@ -129,8 +129,8 @@
       "p95_latency_ms": 372.62,
       "error_rate": 0.1494,
       "avg_cost_usd": 0.001,
-      "composite_quality": 0.73,
-      "sim_time_s": 0.67
+      "composite_quality": 0.7169,
+      "sim_time_s": 0.31
     },
     "least-busy": {
       "strategy": "least-busy",
@@ -139,8 +139,8 @@
       "p95_latency_ms": 324.83,
       "error_rate": 0.1205,
       "avg_cost_usd": 0.0007,
-      "composite_quality": 0.7691,
-      "sim_time_s": 0.97
+      "composite_quality": 0.7604,
+      "sim_time_s": 0.37
     },
     "cost-aware": {
       "strategy": "cost-aware",
@@ -150,7 +150,7 @@
       "error_rate": 0.1484,
       "avg_cost_usd": 0.0,
       "composite_quality": 0.7478,
-      "sim_time_s": 0.83
+      "sim_time_s": 0.32
     },
     "sticky": {
       "strategy": "sticky",
@@ -159,23 +159,76 @@
       "p95_latency_ms": 301.45,
       "error_rate": 0.0528,
       "avg_cost_usd": 0.002,
-      "composite_quality": 0.8235,
-      "sim_time_s": 0.51
+      "composite_quality": 0.7977,
+      "sim_time_s": 0.28
     },
     "ssm_predictor": {
       "strategy": "ssm",
       "n_episodes": 200,
-      "avg_latency_ms": 342.38,
-      "p95_latency_ms": 394.35,
-      "error_rate": 0.1593,
+      "avg_latency_ms": 181.32,
+      "p95_latency_ms": 183.41,
+      "error_rate": 0.0486,
       "avg_cost_usd": 0.0,
-      "composite_quality": 0.7406,
-      "sim_time_s": 191.12
+      "composite_quality": 0.8766,
+      "sim_time_s": 90.64
+    }
+  },
+  "cost_regime_shift": {
+    "round-robin": {
+      "strategy": "round-robin",
+      "n_episodes": 200,
+      "avg_latency_ms": 329.95,
+      "p95_latency_ms": 334.24,
+      "error_rate": 0.0273,
+      "avg_cost_usd": 0.0086,
+      "composite_quality": 0.6859,
+      "sim_time_s": 0.26
+    },
+    "least-busy": {
+      "strategy": "least-busy",
+      "n_episodes": 200,
+      "avg_latency_ms": 301.12,
+      "p95_latency_ms": 305.0,
+      "error_rate": 0.0216,
+      "avg_cost_usd": 0.0061,
+      "composite_quality": 0.7381,
+      "sim_time_s": 0.36
+    },
+    "cost-aware": {
+      "strategy": "cost-aware",
+      "n_episodes": 200,
+      "avg_latency_ms": 301.12,
+      "p95_latency_ms": 305.0,
+      "error_rate": 0.0216,
+      "avg_cost_usd": 0.0061,
+      "composite_quality": 0.7381,
+      "sim_time_s": 0.37
+    },
+    "sticky": {
+      "strategy": "sticky",
+      "n_episodes": 200,
+      "avg_latency_ms": 310.46,
+      "p95_latency_ms": 335.5,
+      "error_rate": 0.0238,
+      "avg_cost_usd": 0.0069,
+      "composite_quality": 0.7212,
+      "sim_time_s": 0.25
+    },
+    "ssm_predictor": {
+      "strategy": "ssm",
+      "n_episodes": 200,
+      "avg_latency_ms": 304.82,
+      "p95_latency_ms": 312.31,
+      "error_rate": 0.0211,
+      "avg_cost_usd": 0.0057,
+      "composite_quality": 0.741,
+      "sim_time_s": 89.95
     }
   },
   "deltas": {
-    "ssm_vs_round_robin_in_dist": 0.0338,
-    "ssm_vs_round_robin_shift": 0.0106
+    "ssm_vs_round_robin_in_dist": 0.0565,
+    "ssm_vs_round_robin_shift": 0.1597,
+    "ssm_vs_round_robin_all_api": 0.0551
   },
-  "verdict": "SSM COMPARABLE to round-robin (delta=+3.4%) \u2014 within 5%; static strategies sufficient; SSM preferred only where temporal state tracking adds independent value"
+  "verdict": "SSM COMPARABLE to round-robin (delta=+5.6%) \u2014 within 5%; static strategies sufficient; SSM preferred only where temporal state tracking adds independent value"
 }

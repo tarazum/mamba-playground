@@ -1,6 +1,10 @@
 # Mamba Playground — Integration Plan
 
 > How experiment results map to production decisions in agent-pool, SimpleAO, and TSE.
+>
+> **STATUS: NOT APPROVED (2026-08).** All gates failed after the final audit corrected
+> baselines and comparison methodology (see `external_final_audit.md`). This plan is
+> kept for reference in case a future phase passes the gates on real trace data.
 
 ## Gate Conditions (from CLAUDE.md)
 
@@ -8,10 +12,14 @@
 |------|-----------|----------|
 | **Primary** (Exp 04) | SSM routing beats round-robin by >10% avg quality | Integrate SSMRouter into agent-pool |
 | **Primary** (Exp 04) | Within 5% of round-robin | Keep static strategies; SSM not worth overhead |
-| **Secondary** (Exp 03) | SSM detects stuck workers >3 events before timeout | Integrate SSMAnomalyDetector into agent-pool health loop + SimpleAO Guard |
+| **Secondary** (Exp 03) | SSM detects anomalies ≥3 steps earlier than the tuned threshold at a matched FP rate | Integrate SSMAnomalyDetector into agent-pool health loop + SimpleAO Guard |
 | **Secondary** (Exp 03) | Detection lag comparable to threshold rules | Static rules sufficient |
+| **TSE** (Exp 05) | SSM beats the tuned slope baseline by >10% | Integrate SSMVelocityTracker into TSE |
+| **TSE** (Exp 05) | Within 10% of tuned baseline | Tuned slope classifier sufficient |
 
-**Do not integrate before running all four experiments.**
+**Do not integrate before running all five experiments.**
+
+**Final outcome: none of the gates passed → no integration.**
 
 ---
 
@@ -88,9 +96,14 @@ The SimpleAO Guard system already handles the action layer — SSM only needs to
 
 Integration focus: **trend velocity tracking** — maintaining state across weekly runs.
 
-Current TSE problem: each weekly run reprocesses all signals from scratch. Expensive, loses temporal context.
+**STATUS: rejected by Exp 05 (final audit).** The tuned slope-threshold classifier
+reaches 94.8% on the synthetic velocity task vs 100% for the SSM — a +5.2pp margin,
+below the 10% gate. With weekly cadence and 12-step sequences, the SSM's advantages
+(long-horizon state compression, linear-time scan) never engage. If TSE ever moves to
+high-frequency streaming ingestion over long horizons, re-evaluate; otherwise a tuned
+piecewise-slope classifier (one file, no training) is the sufficient tool.
 
-**If SSM works as state compressor (validated by Exp 02 accuracy):**
+Original sketch, kept for reference if the gate is ever re-run and passed:
 
 ```
 TSE Stage 2.5 (between Normalize and Embed):
@@ -136,13 +149,13 @@ After running all experiments, use this matrix:
 
 ## Performance Expectations (CPU baseline)
 
-From Exp 01 speed test benchmarks:
+From Exp 01 speed test benchmarks (measured):
 
-| Config | Expected throughput |
+| Config | Measured throughput |
 |--------|---------------------|
-| seq=32, d=32, batch=32 | ~3,000–8,000 seq/s |
-| seq=64, d=32, batch=32 | ~1,500–4,000 seq/s |
-| seq=128, d=64, batch=16 | ~500–1,500 seq/s |
+| seq=32, d=32, batch=32 | ~1,000 seq/s |
+| seq=64, d=32, batch=32 | ~570 seq/s |
+| seq=128, d=64, batch=16 | ~155 seq/s |
 
 For production routing (agent-pool), seq=32 is sufficient. Inference at batch=1 is the bottleneck for online use — expect ~10–50ms/request on CPU, <1ms on GPU.
 

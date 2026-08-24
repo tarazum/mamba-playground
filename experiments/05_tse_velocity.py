@@ -3,7 +3,7 @@ Experiment 05 — TSE Trend Velocity Tracking
 
 Question: Can a Mamba-style SSM classify trend velocity (rising / peaking /
           declining / noise) from 12-week sequences better than a simple
-          moving-average slope baseline?
+          slope-threshold baseline?
 
 Motivation: TSE currently has no memory between weekly runs. An SSM that
             classifies velocity from the full 12-week trajectory could replace
@@ -11,8 +11,15 @@ Motivation: TSE currently has no memory between weekly runs. An SSM that
             its compressed hidden state can be persisted between runs (small
             binary blob) instead of reprocessing all history.
 
+Improvements over v1 (final audit fix):
+  - The baseline's slope_threshold is now tuned on the validation set, exactly
+    like the k-sweep added to Exp 03 in Phase 2. v1 hard-coded 0.08, which sits
+    ~1.5σ above the generator's true rising/declining slope (0.8/11 ≈ 0.073),
+    so the baseline systematically misclassified monotonic trends as noise and
+    inflated the SSM delta from ~5pp to ~49pp.
+
 Dataset: synthetic trend velocity sequences (data/generators.py)
-Models:  SSMClassifier vs MovingAverageClassifier
+Models:  SSMClassifier vs MovingAverageClassifier (tuned) vs fixed-0.08 reference
 Metric:  4-class accuracy (rising / peaking / declining / noise)
          + per-class accuracy to see where each model struggles
 
@@ -62,12 +69,13 @@ CFG = {
 
 class MovingAverageClassifier:
     """
-    Classify trend velocity from the slope of a short trailing window.
+    Classify trend velocity from regression slopes.
 
-    rising:   slope > +threshold
-    declining: slope < -threshold
-    peaking:  slope positive then turns negative (detected by sign change)
-    noise:    everything else (slope near zero, no clear pattern)
+    Decision order (uses cluster_size, column 0):
+      1. overall slope (linear fit over ALL weeks) > +thr  → rising
+      2. overall slope < -thr                              → declining
+      3. early slope > +thr AND recent slope < -thr         → peaking
+      4. otherwise                                          → noise
     """
 
     def __init__(self, window: int = 3, slope_threshold: float = 0.08):
@@ -108,6 +116,30 @@ class MovingAverageClassifier:
     def predict_batch(self, X: np.ndarray) -> np.ndarray:
         """X: (N, n_weeks, 3) → (N,) predictions"""
         return np.array([self.classify_sequence(X[i]) for i in range(len(X))])
+
+
+def tune_slope_threshold(
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    window: int = 3,
+    candidates: list[float] | None = None,
+) -> tuple[float, float]:
+    """
+    Sweep slope_threshold on the validation set, return (best_thr, best_val_acc).
+
+    Candidates are ordered descending so that on ties the more conservative
+    (larger) threshold wins.
+    """
+    if candidates is None:
+        candidates = [0.10, 0.09, 0.08, 0.07, 0.06, 0.05, 0.045,
+                      0.04, 0.03, 0.02, 0.015, 0.01, 0.005]
+    best_thr, best_acc = candidates[0], -1.0
+    for thr in candidates:
+        preds = MovingAverageClassifier(window, thr).predict_batch(X_val)
+        acc = float((preds == y_val).mean())
+        if acc > best_acc:
+            best_acc, best_thr = acc, thr
+    return best_thr, best_acc
 
 
 # ── training ──────────────────────────────────────────────────────────────────
@@ -236,17 +268,32 @@ def main():
 
     report = {"config": CFG, "device": device, "models": {}}
 
-    # ── Moving Average baseline ──
-    print("--- MovingAverageClassifier (slope of last 3 weeks) ---")
-    ma = MovingAverageClassifier(window=3, slope_threshold=0.08)
+    # ── Moving Average baseline (threshold tuned on val) ──
+    print("--- MovingAverageClassifier: tune slope_threshold on val set ---")
+    best_thr, best_val_acc = tune_slope_threshold(X_val, y_val)
+    print(f"  Best slope_threshold={best_thr} (val acc={best_val_acc:.4f})")
+
+    ma_untuned = MovingAverageClassifier(window=3, slope_threshold=0.08)
+    ma_untuned_eval = evaluate(ma_untuned, X_test, y_test, is_sklearn=True)
+    print(f"\n--- MovingAverageClassifier (fixed thr=0.08, v1 reference) ---")
+    print(f"Test accuracy: {ma_untuned_eval['accuracy']:.3f}")
+    report["models"]["moving_average_fixed_0.08"] = {
+        **ma_untuned_eval, "window": 3, "slope_threshold": 0.08,
+        "note": "v1 configuration — not tuned, kept for reference",
+    }
+
+    ma = MovingAverageClassifier(window=3, slope_threshold=best_thr)
     t0 = time.time()
     ma_eval = evaluate(ma, X_test, y_test, is_sklearn=True)
     ma_time = time.time() - t0
+    print(f"\n--- MovingAverageClassifier (tuned thr={best_thr}) ---")
     print(f"Test accuracy: {ma_eval['accuracy']:.3f}  ({ma_time:.3f}s)")
     print("Per-class:")
     for cls, acc in ma_eval["per_class"].items():
         print(f"  {cls:10s}: {acc:.3f}")
-    report["models"]["moving_average"] = {**ma_eval, "window": 3, "slope_threshold": 0.08}
+    report["models"]["moving_average_tuned"] = {
+        **ma_eval, "window": 3, "slope_threshold": best_thr, "val_acc": round(best_val_acc, 4),
+    }
 
     # ── SSMClassifier ──
     print("\n--- SSMClassifier (Mamba-style, 12-week sequences) ---")
@@ -278,42 +325,44 @@ def main():
     print("=" * 60)
 
     ssm_acc = report["models"]["ssm"]["accuracy"]
-    ma_acc = report["models"]["moving_average"]["accuracy"]
+    ma_acc = report["models"]["moving_average_tuned"]["accuracy"]
+    ma_untuned_acc = report["models"]["moving_average_fixed_0.08"]["accuracy"]
     delta = ssm_acc - ma_acc
 
-    print(f"\n  {'Model':<30} {'Accuracy':>10}  {'Delta':>8}")
-    print(f"  {'-' * 52}")
-    print(f"  {'SSMClassifier':<30} {ssm_acc:>10.3f}  {'':>8}")
-    print(f"  {'MovingAverageClassifier':<30} {ma_acc:>10.3f}  {delta:>+8.3f} (SSM - MA)")
+    print(f"\n  {'Model':<34} {'Accuracy':>10}")
+    print(f"  {'-' * 46}")
+    print(f"  {'SSMClassifier':<34} {ssm_acc:>10.3f}")
+    print(f"  {'MovingAverage (tuned thr=' + str(best_thr) + ')':<34} {ma_acc:>10.3f}")
+    print(f"  {'MovingAverage (fixed thr=0.08, v1)':<34} {ma_untuned_acc:>10.3f}")
+    print(f"\n  Delta (SSM - tuned MA): {delta:+.3f}   [gate: > 0.10]")
 
-    print(f"\n  Per-class comparison:")
+    print(f"\n  Per-class comparison (tuned MA):")
     print(f"  {'Class':<12} {'SSM':>8}  {'MA':>8}  {'Delta':>8}")
     print(f"  {'-' * 42}")
     for cls in CLASS_NAMES:
         s = report["models"]["ssm"]["per_class"].get(cls, 0)
-        m = report["models"]["moving_average"]["per_class"].get(cls, 0)
+        m = report["models"]["moving_average_tuned"]["per_class"].get(cls, 0)
         print(f"  {cls:<12} {s:>8.3f}  {m:>8.3f}  {s-m:>+8.3f}")
 
     if delta > 0.10:
         verdict = (
-            f"SSM clearly better ({delta:+.1%}) — "
-            f"worth integrating as TSE velocity tracker; "
-            f"replace DECAY_WINDOW_DAYS heuristic with learned model"
+            f"SSM beats tuned baseline by {delta:+.1%} — above the 10% gate; "
+            f"candidate for TSE velocity tracker; validate on real TSE history"
         )
     elif delta > -0.05:
         verdict = (
-            f"SSM comparable to moving average ({delta:+.1%}) — "
-            f"SSM preferred if state persistence across weekly runs is needed; "
-            f"otherwise moving average is sufficient"
+            f"SSM comparable to tuned baseline ({delta:+.1%}) — below the 10% gate; "
+            f"tuned slope classifier is sufficient; no integration"
         )
     else:
         verdict = (
-            f"Moving average wins ({delta:+.1%}) — "
+            f"Tuned baseline wins ({delta:+.1%}) — "
             f"SSM does not add value for trend velocity on this data"
         )
 
     report["verdict"] = verdict
-    report["delta_ssm_vs_ma"] = round(delta, 4)
+    report["delta_ssm_vs_tuned_ma"] = round(delta, 4)
+    report["delta_ssm_vs_fixed_ma_v1"] = round(ssm_acc - ma_untuned_acc, 4)
     print(f"\nVerdict: {verdict}")
 
     out = results_dir / "05_tse_velocity_report.json"

@@ -8,6 +8,9 @@ Improvements over v1:
   - Variable anomaly onset (20–75% of sequence, not fixed at 50%)
   - Tuned threshold baseline (k swept on validation set, not single untuned value)
   - Distribution shift evaluation: test on onset positions not seen in training
+  - FP-matched gate evaluation: SSM detection lag is compared at a false-positive
+    rate matched to the baseline (a fixed 0.5 threshold favoured the more
+    trigger-happy detector and overstated the lag advantage)
 
 Dataset: synthetic agent pool events (data/generators.py)
 Models:  SSMAnomalyDetector vs. ThresholdDetector (best-k, tuned on val)
@@ -277,6 +280,41 @@ def evaluate_by_onset_bucket(
     return result
 
 
+def sweep_detection_thresholds(
+    scores: np.ndarray,
+    onsets: np.ndarray,
+    thresholds,
+) -> list[dict]:
+    """
+    Evaluate FP rate and detection lag at multiple score thresholds.
+
+    A raw lag comparison at one fixed threshold conflates sensitivity with
+    speed: a trigger-happy detector shows a small lag but a high FP rate.
+    This sweep exposes the tradeoff explicitly.
+    """
+    rows = []
+    for t in thresholds:
+        r = evaluate_detection_lag(scores, float(t), onsets)
+        rows.append({
+            "threshold": round(float(t), 3),
+            "fp_rate": r["false_positive_rate"],
+            "mean_lag_steps": r["mean_lag_steps"],
+            "missed_rate": r["missed_rate"],
+        })
+    return rows
+
+
+def pick_fp_matched(rows: list[dict], target_fp: float, tol: float = 0.02) -> dict | None:
+    """
+    Return the sweep row whose FP rate is closest to target_fp from below
+    (within tolerance) — the SSM operating point comparable to the baseline.
+    """
+    eligible = [r for r in rows if r["fp_rate"] <= target_fp + tol]
+    if not eligible:
+        return None
+    return min(eligible, key=lambda r: abs(r["fp_rate"] - target_fp))
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -402,9 +440,21 @@ def main():
     ssm_shift_auc  = compute_auc(y_shift.flatten(), ssm_shift_scores.flatten())
     ssm_shift_lag  = evaluate_detection_lag(ssm_shift_scores, CFG["detection_threshold"], onsets_shift)
 
+    # FP-matched operating point: compare lags when both detectors fire at a
+    # similar FP rate, instead of a fixed 0.5 threshold that favours the more
+    # trigger-happy model.
+    threshold_grid = np.round(np.arange(0.30, 0.91, 0.05), 2)
+    ssm_sweep = sweep_detection_thresholds(ssm_scores, onsets_test, threshold_grid)
+    baseline_fp = thresh_lag["false_positive_rate"]
+    ssm_fp_matched = pick_fp_matched(ssm_sweep, baseline_fp)
+
     print(f"Test AUC={ssm_auc:.3f}  "
           f"Lag={ssm_lag['mean_lag_steps'] if not ssm_lag['missed_all'] else 'missed all'}  "
           f"({ssm_time:.1f}s)")
+    if ssm_fp_matched:
+        print(f"  FP-matched (SSM thr={ssm_fp_matched['threshold']:.2f}, "
+              f"FP={ssm_fp_matched['fp_rate']:.3f} vs baseline {baseline_fp:.3f}): "
+              f"lag={ssm_fp_matched['mean_lag_steps']}")
     report["models"]["ssm"] = {
         **ssm_train,
         "test_auc": round(ssm_auc, 4),
@@ -412,6 +462,8 @@ def main():
         "onset_buckets": ssm_buckets,
         "shift_test_auc": round(ssm_shift_auc, 4),
         "shift_detection_lag": ssm_shift_lag,
+        "threshold_sweep": ssm_sweep,
+        "fp_matched": ssm_fp_matched,
         "params": n_params,
         "train_time_s": round(ssm_time, 1),
     }
@@ -440,24 +492,46 @@ def main():
         lag_str = "missed all" if stats["mean_lag_steps"] is None else f"{stats['mean_lag_steps']:.2f}"
         print(f"    {bucket:<18} n={stats['n']:3d}  lag={lag_str}  miss={stats['missed_rate']:.3f}")
 
-    # Verdict — gate condition: SSM detects, threshold does not (or detects later)
+    # Verdict — gate: SSM detects ≥3 steps earlier than the tuned threshold.
+    # The gate metric is the FP-matched lag delta; raw-0.5 numbers are shown for
+    # reference but compare detectors at unequal false-positive rates.
     gate_threshold_steps = 3
     ssm_m   = report["models"]["ssm"]
     thr_m   = report["models"]["threshold"]
 
     thr_missed = thr_m["detection_lag"]["missed_all"]
     ssm_missed = ssm_m["detection_lag"]["missed_all"]
+    thr_lag    = thr_m["detection_lag"]["mean_lag_steps"]
+    thr_fp     = thr_m["detection_lag"]["false_positive_rate"]
+    matched    = ssm_m.get("fp_matched")
 
-    if thr_missed and not ssm_missed:
+    if ssm_missed:
+        verdict = "SSM failed to detect — threshold rules are sufficient"
+    elif thr_missed or thr_lag is None:
         verdict = (
             f"SSM detects (lag={ssm_m['detection_lag']['mean_lag_steps']:.2f} steps); "
             f"threshold missed all detections even after tuning — "
             f"promising on synthetic data; validate on real traces before production"
         )
-    elif ssm_missed:
-        verdict = "SSM failed to detect — threshold rules are sufficient"
+    elif matched and matched["mean_lag_steps"] is not None:
+        matched_delta = thr_lag - matched["mean_lag_steps"]
+        raw_delta = thr_lag - ssm_m["detection_lag"]["mean_lag_steps"]
+        if matched_delta >= gate_threshold_steps:
+            verdict = (
+                f"SSM detects {matched_delta:.1f} steps earlier at matched FP rate "
+                f"(SSM thr={matched['threshold']:.2f}: FP={matched['fp_rate']:.3f} vs baseline {thr_fp:.3f}) — "
+                f"meets gate (≥{gate_threshold_steps}); validate on real traces before production"
+            )
+        elif matched_delta > 0:
+            verdict = (
+                f"SSM detects {matched_delta:.1f} steps earlier at matched FP rate — BELOW gate "
+                f"({gate_threshold_steps} steps). Raw-0.5 delta was {raw_delta:.1f} steps but at unequal "
+                f"FP rates (SSM {ssm_m['detection_lag']['false_positive_rate']:.1%} vs baseline {thr_fp:.1%})"
+            )
+        else:
+            verdict = "Threshold baseline matches or beats SSM at matched FP rate — static rules are sufficient"
     else:
-        lag_delta = thr_m["detection_lag"]["mean_lag_steps"] - ssm_m["detection_lag"]["mean_lag_steps"]
+        lag_delta = thr_lag - ssm_m["detection_lag"]["mean_lag_steps"]
         if lag_delta >= gate_threshold_steps:
             verdict = (
                 f"SSM detects {lag_delta:.1f} steps earlier — meets gate (≥{gate_threshold_steps}); "

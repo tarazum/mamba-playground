@@ -430,7 +430,7 @@ def simulate_routing_episode(
 
     history: list[np.ndarray] = []
     decisions: list[int] = []
-    latencies, costs, errors, timeouts, step_quals = [], [], [], [], []
+    latencies, costs, errors, step_quals = [], [], [], []
 
     for req_i in range(n_requests):
         # Release completions that finished before this step.
@@ -494,15 +494,11 @@ def simulate_routing_episode(
 
         # Simulate outcome.
         is_error = rng.random() < error_prob
-        is_timeout = latency > 25000
         actual_latency = float(rng.normal(latency, latency * 0.1))
-        if is_timeout:
-            actual_latency = 30000.0
 
         latencies.append(actual_latency)
         costs.append(w.cost_per_call)
         errors.append(float(is_error))
-        timeouts.append(float(is_timeout))
         step_quals.append(_step_quality(actual_latency, float(is_error), w.cost_per_call))
 
         # Update in-flight tracking.
@@ -528,7 +524,6 @@ def simulate_routing_episode(
         "total_cost_usd": float(np.sum(costs)),
         "avg_cost_usd": float(np.mean(costs)),
         "error_rate": float(np.mean(errors)),
-        "timeout_rate": float(np.mean(timeouts)),
         "call_distribution": call_counts,
         "event_history": history,
         "decisions": decisions,

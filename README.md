@@ -4,6 +4,11 @@ Research playground to validate whether Mamba-style State Space Models (SSMs) ar
 integrating into production systems: **agent-pool**, **SimpleAgentsOrchestrator**, and
 **Trend Signal Engine**.
 
+> **Status: CLOSED (2026-08) — negative result.** After final-audit corrections (tuned
+> baselines, FP-matched comparisons), none of the three gates passed. No SSM integration
+> into any production system. See `docs/external_final_audit.md` for the audit and
+> `docs/experiment_results_analysis.md` for corrected results.
+
 ## Core Question
 
 > Transformer = reasoning engine (keep for prompts, planning, code)
@@ -26,7 +31,8 @@ mamba-playground/
 │   ├── 01_setup_check.py     ← environment detection + speed benchmarks
 │   ├── 02_event_classify.py  ← classify event streams: normal / degrading / stuck
 │   ├── 03_anomaly_detect.py  ← detect anomaly onset (secondary gate)
-│   └── 04_routing_sim.py     ← SSM routing vs round-robin / least-busy (PRIMARY gate)
+│   ├── 04_routing_sim.py     ← SSM routing vs round-robin / least-busy (PRIMARY gate)
+│   └── 05_tse_velocity.py    ← trend velocity vs tuned slope baseline (TSE gate)
 ├── docs/
 │   └── integration_plan.md   ← how results map to production decisions
 └── results/                  ← experiment outputs (JSON)
@@ -67,8 +73,10 @@ See `experiments/01_setup_check.py` for automated detection and instructions.
 |------------|------|----------|
 | Exp 04 (routing) | SSM beats round-robin by >10% | Integrate SSMRouter into agent-pool |
 | Exp 04 (routing) | Within 5% of round-robin | Static strategies sufficient |
-| Exp 03 (anomaly) | Detects stuck workers >3 events early | Integrate into health loop + SimpleAO Guard |
+| Exp 03 (anomaly) | Detects anomalies ≥3 steps earlier than tuned threshold **at matched FP rate** | Integrate into health loop + SimpleAO Guard |
 | Exp 03 (anomaly) | Comparable to threshold rules | Static rules sufficient |
+| Exp 05 (TSE velocity) | SSM beats tuned slope baseline by >10% | Candidate for TSE velocity tracker |
+| Exp 05 (TSE velocity) | Within 10% of tuned baseline | Tuned slope classifier sufficient |
 
 See `docs/integration_plan.md` for detailed production integration instructions per project.
 

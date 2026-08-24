@@ -2,11 +2,15 @@
 
 > Can Mamba-style State Space Models replace or improve on static heuristics in agent routing, anomaly detection, and trend tracking?
 
+> **Final status (2026-08): CLOSED — negative result.** After the final external audit
+> corrected baselines and comparison methodology, **none of the three gates passed**.
+> See `external_final_audit.md` for the full audit trail.
+
 ---
 
 ## What Is It?
 
-We ran four experiments to test whether a new type of neural model (SSM / Mamba) can outperform the simple rule-based logic currently used in our three production systems. The core bet was:
+We ran five experiments to test whether a new type of neural model (SSM / Mamba) can outperform the simple rule-based logic currently used in our three production systems. The core bet was:
 
 > **Transformers = reasoning** (keep for LLM prompts, planning, code generation)
 > **Mamba/SSM = state tracking** (use for routing, monitoring, anomaly detection)
@@ -27,18 +31,19 @@ Traditional approach:       SSM approach:
 | Mamba | A specific SSM architecture with "selective" memory — it decides what to remember at each step |
 | MinimalSSM | Our CPU-only pure-PyTorch implementation of Mamba — runs without a GPU |
 | mamba-ssm | The official GPU-optimized package — 10–50x faster, requires CUDA |
-| Baseline | The simple rule we're comparing against (round-robin, rolling average, etc.) |
+| Baseline | The simple rule we're comparing against (round-robin, slope threshold, etc.) |
 
 ---
 
-## The Four Experiments
+## The Five Experiments
 
 ```
 mamba-playground/experiments/
 ├── 01_setup_check.py     ← Is the machine ready? What are the speed limits?
 ├── 02_event_classify.py  ← Can SSM recognize pool health states from event streams?
 ├── 03_anomaly_detect.py  ← Can SSM detect a failing worker earlier than a rule-based check?
-└── 04_routing_sim.py     ← Does SSM routing beat round-robin / least-busy?
+├── 04_routing_sim.py     ← Does SSM routing beat round-robin / least-busy / sticky?
+└── 05_tse_velocity.py    ← Does SSM classify trend velocity better than a tuned slope rule?
 ```
 
 | Exp | Question | Type | Gate? |
@@ -47,6 +52,7 @@ mamba-playground/experiments/
 | 02 | Classify normal/degrading/stuck | Sanity check | No |
 | 03 | Detect anomaly onset earlier | **Secondary gate** | Yes |
 | 04 | Route requests better | **Primary gate** | Yes |
+| 05 | Classify trend velocity | **TSE gate** | Yes |
 
 ---
 
@@ -55,13 +61,11 @@ mamba-playground/experiments/
 ```mermaid
 flowchart TD
     A[01 Setup Check\nCPU speed baseline] --> B[02 Classification\nSSM vs LSTM accuracy]
-    B --> C[03 Anomaly Detection\nSSM vs threshold rules]
-    C --> D[04 Routing Simulation\nSSM vs round-robin / cost-aware]
-    D --> E{Gate Decisions}
-    E -->|Primary gate passed| F[Integrate SSMRouter\ninto agent-pool]
-    E -->|Primary gate failed| G[Keep static strategies\ncost-aware is sufficient]
-    E -->|Secondary gate passed| H[Integrate SSMAnomalyDetector\ninto health loop]
-    E -->|Secondary gate failed| I[Keep static health checks\nthreshold rules OK]
+    B --> C[03 Anomaly Detection\nSSM vs tuned threshold, FP-matched]
+    C --> D[04 Routing Simulation\nSSM vs round-robin / least-busy / sticky]
+    D --> F[05 TSE Velocity\nSSM vs tuned slope baseline]
+    F --> E{Gate Decisions}
+    E -->|All gates evaluated\non corrected methodology| G[All three gates NOT MET\nNo integration\nProject closed]
 ```
 
 ---
@@ -94,85 +98,120 @@ LSTMClassifier ████████████████ 100%   12.2s  (P
 On GPU: SSM would be faster — parallel scan eliminates the bottleneck
 ```
 
-> Exp 02 is a sanity check, not a gate. The ceiling result confirms the SSM implementation is correct.
+> Exp 02 is a sanity check, not a gate. The ceiling result confirms the SSM implementation is correct — and that at these sequence lengths (≤64) an LSTM is at parity.
 
 ---
 
 ### Exp 03 — Anomaly Detection *(SECONDARY GATE)*
 
-Phase 2 improvements: variable onset (20–65% of sequence), threshold k tuned on val set, onset-bucket breakdown, distribution shift test.
+Final methodology (after Phase 2 + final audit): variable onset (20–65% of sequence),
+threshold k tuned on val set, **detection lag compared at matched false-positive rates**,
+onset-bucket breakdown, distribution shift test.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Normal: steps 0 to onset (variable)
-    Normal --> Anomaly: onset at random step
-    Anomaly --> DetectedSSM: lag 3.0 steps avg
-    Anomaly --> DetectedThreshold: lag 6.65 steps avg (tuned k=0.5)
-    DetectedSSM --> [*]
-    DetectedThreshold --> [*]
-```
+**Raw comparison (fixed score threshold 0.5) — misleading, shown for reference only:**
 
-| Model | AUC | Mean lag | Miss rate | FP rate | Shift AUC | Shift lag |
-|-------|-----|---------|-----------|---------|-----------|-----------|
-| SSMAnomalyDetector | **0.978** | **3.0 steps** | **0%** | 39.0% | **0.996** | **0.00** |
-| ThresholdDetector (tuned k=0.5) | 0.962 | 6.65 steps | 0% | **17.7%** | 0.931 | 3.85 |
+| Model | AUC | Mean lag | Miss rate | FP rate |
+|-------|-----|---------|-----------|---------|
+| SSMAnomalyDetector | **0.978** | **3.0 steps** | 0% | 37.3% |
+| ThresholdDetector (tuned k=0.5) | 0.963 | 6.8 steps | 0% | **13.0%** |
 
-> **Secondary gate: PASSED.** SSM detects 3.7 steps earlier than the tuned threshold. Gate requires ≥3 steps.
+The raw 3.8-step advantage is an artifact of comparing a trigger-happy detector against a
+conservative one. **FP-matched comparison (the gate metric):**
 
-**The tuned threshold is now a real competitor.** v1 used a single untuned k=2.0 that missed 100% of anomalies. With k swept on the val set (best k=0.5), the threshold detects everything — just 3.7 steps later than SSM.
+| Model | Operating point | FP rate | Mean lag |
+|-------|----------------|---------|----------|
+| SSMAnomalyDetector | score thr = 0.80 | 11.0% | 5.75 steps |
+| ThresholdDetector (tuned k=0.5) | k = 0.5 | 13.0% | 6.84 steps |
 
-**FP rate tradeoff:** SSM fires on 39% of normal sequences vs 17.7% for threshold. In production, raise the detection threshold from 0.5 toward 0.65–0.70 to reduce FPs before shipping.
+> **Secondary gate: NOT MET.** At matched FP rates the SSM detects only **1.1 steps**
+> earlier; the gate requires ≥3.
 
-**Onset-bucket breakdown (SSM):**
+**Distribution shift (onsets 68–80%, outside the training range) — including FP rates
+that the pre-audit reports omitted:**
+
+| Model | Shift AUC | Shift lag | Shift FP rate |
+|-------|-----------|-----------|---------------|
+| SSMAnomalyDetector | 0.996 | 0.00 steps | **100%** |
+| ThresholdDetector | 0.928 | 3.95 steps | **52.5%** |
+
+"Shift lag 0.00, generalises well" (pre-audit claim) was an artifact: the SSM fires before
+onset in **every** shift sequence. The model learned that anomalies begin by 20–65% of the
+sequence; when onset is later, it false-alarms while waiting. Neither detector is usable
+off-distribution without threshold re-calibration.
+
+**Onset-bucket breakdown (SSM, standard test):**
 
 | Onset position | n | SSM lag | Interpretation |
 |----------------|---|---------|----------------|
-| Early (≤33%) | 99 | 7.01 steps | Anomaly starts before model has normal baseline |
-| Mid (33–66%) | 201 | 1.02 steps | Best performance — enough normal context |
-| Out-of-range shift (68–80%) | 200 | 0.00 steps | Late onset = immediate detection, generalises well |
+| Early (≤33%) | 99 | 6.94 steps | Anomaly starts before model has normal baseline |
+| Mid (33–66%) | 201 | 1.05 steps | Best performance — enough normal context |
 
 ---
 
 ### Exp 04 — Routing Simulation *(PRIMARY GATE)*
 
-Phase 2 improvements: `SSMQualityPredictor` (predict future quality, not imitate oracle), queue-depth `least-busy`, `sticky` baseline, distribution shift on heavy-degradation pool.
+Final methodology (after Phase 2 + final audit): `SSMQualityPredictor` (predict future
+quality, not imitate oracle), queue-depth `least-busy`, `sticky` baseline, **cost term on
+the per-call scale (0.015) so eval matches the training target**, **training on a separate
+seed stream** (no episode overlap with evaluation), three pool conditions.
 
 **In-distribution (default pool — 1 degrading worker at step 100):**
 
 | Strategy | Quality | Latency | Error | Cost/req |
 |----------|---------|---------|-------|---------|
-| round-robin | 0.833 | 255ms | 5.4% | $0.0010 |
+| round-robin | 0.820 | 255ms | 5.4% | $0.0010 |
 | least-busy | 0.860 | 222ms | 3.4% | $0.0000 |
 | cost-aware | 0.860 | 222ms | 3.4% | $0.0000 |
-| sticky | 0.846 | 244ms | 3.5% | $0.0013 |
-| **SSMQualityPredictor** | **0.866** | **206ms** | 4.0% | $0.0000 |
+| sticky | 0.829 | 244ms | 3.5% | $0.0013 |
+| **SSMQualityPredictor** | **0.876** | **181ms** | 5.0% | $0.0000 |
+
+> Note: with the corrected cost scale, strategies that touch the paid worker (round-robin,
+> sticky) now pay for it in the composite; least-busy / cost-aware avoid it. In this pool
+> cost-aware and least-busy are identical — the free workers are also the fast ones.
 
 **Distribution shift (heavy degradation — 3/5 workers degrade from step 30–90):**
 
-| Strategy | Quality | Drop vs in-dist | Interpretation |
-|----------|---------|-----------------|----------------|
-| **sticky** | **0.824** | **-2.6%** | Rotates on error — resilient to any degradation pattern |
-| least-busy | 0.769 | -10.6% | Routes to idle workers, including degrading ones |
-| SSMQualityPredictor | 0.741 | **-14.4%** | Overfit to training distribution — quality model breaks down |
-| cost-aware | 0.748 | -13.0% | Routes to free (CLI) workers — exactly the ones degrading |
-| round-robin | 0.730 | -12.4% | Baseline |
+| Strategy | Quality | Drop vs in-dist | Seed-43 replication |
+|----------|---------|-----------------|---------------------|
+| **SSMQualityPredictor (seed 42)** | **0.877** | none (+0.1pp) | 0.705 — *worst* |
+| sticky | 0.798 | −3.1pp | 0.797 |
+| least-busy | 0.760 | −10.0pp | 0.761 |
+| cost-aware | 0.748 | −11.2pp | 0.748 |
+| round-robin | 0.717 | −10.3pp | 0.717 |
 
-> **Primary gate: NOT MET.** SSM is +3.4% over round-robin in-distribution (gate requires >10%).
+**Cost-regime shift (all-API pool — 5 paid workers, no degradation; added in final audit):**
 
-```mermaid
-flowchart LR
-    A[In-distribution\ndefault pool] -->|SSM best at 0.866| B[SSM +3.4%\nvs round-robin]
-    C[Distribution shift\nheavy degradation] -->|sticky wins at 0.824| D[SSM drops -14.4%\nsticky drops only -2.6%]
-    B --> E{Gate verdict}
-    D --> E
-    E --> F[Gate NOT MET:\nstatic strategies sufficient\nfor routing]
-```
+| Strategy | Quality (seed 42) | Seed-43 replication |
+|----------|-------------------|---------------------|
+| least-busy | 0.738 | 0.737 |
+| cost-aware | 0.738 | 0.737 |
+| sticky | 0.721 | 0.722 |
+| round-robin | 0.686 | 0.685 |
+| SSMQualityPredictor | **0.741** | **0.558 — parks on the slowest, most expensive worker** |
 
-**Why sticky dominates the distribution shift:** one observed error → rotate to next worker. No training required, no assumptions about degradation timing. The SSM learned the specific single-worker-degrades-at-step-100 pattern and breaks when 3 workers degrade earlier.
+> In an all-paid pool `cost-aware` degenerates **by construction** to least-busy (there is
+> no free worker to prefer) — so cost-aware was never a distinct policy in any tested pool.
+> Static strategies are stable by construction: their seed-43 numbers are identical to
+> seed 42 (same policies, same physics). The learned router is not.
 
-**Why the queue-depth fix mattered:** old `least-busy` was identical to round-robin (0.602 each). Fixed version tracks in-flight requests, raising it to 0.860 — a genuine distinct competitor.
+> **Primary gate: NOT MET.** SSM is **+5.6pp** over round-robin in-distribution (seed 43:
+> +4.8pp — consistent); the gate requires >10pp.
 
-**The revised recommendation:** use **sticky** as the production routing strategy. It is the most robust across both pool configurations tested. SSM adds marginal value in-distribution but is fragile to distribution shift.
+**What the SSM actually learned, and why it can't be trusted off-distribution:** "park on
+the best available worker." On seed 42 it locks onto `ollama-0` (181ms, 5% err, $0 — the
+fastest free, non-degrading worker) and looks brilliant everywhere. On seed 43 the same
+architecture, same data size, same hyperparameters locks onto the *worst* choices
+off-distribution: a degrading worker on the heavy pool (19.3% errors), and `gpt-4`
+(400ms, $0.015) on the all-API pool. The in-distribution gain is real but small; the
+out-of-distribution behaviour swings from **best strategy to worst strategy on the
+training seed**. A production router must be predictable — this one is a coin flip
+outside its training pool.
+
+**Where this leaves the v2 claims:** v2's "SSM drops −14.4% on shift, sticky most robust"
+was computed with seed leakage (training episodes = eval episodes), so its specific
+numbers were invalid — but the replication shows the *qualitative* concern was right:
+the learned router does not reliably generalize. The corrected picture is worse than
+"fragile": it is unpredictably fragile.
 
 ---
 
@@ -180,34 +219,36 @@ flowchart LR
 
 12 weeks × 3 features per trend. 4 classes: rising / peaking / declining / noise.
 
+**Final methodology (after final audit): the baseline's slope threshold is tuned on the
+same validation split the SSM uses** — mirroring the k-sweep that Phase 2 added to Exp 03.
+
 | Model | Accuracy | Rising | Peaking | Declining | Noise |
 |-------|----------|--------|---------|-----------|-------|
 | SSMClassifier | **1.000** | **1.000** | **1.000** | **1.000** | **1.000** |
-| MovingAverage (last 3 wks) | 0.507 | 0.105 | 0.982 | 0.033 | 0.856 |
-| **Delta** | **+49.3%** | +89.5% | +1.8% | +96.7% | +14.4% |
+| Slope baseline, **val-tuned** (thr=0.06) | **0.948** | 0.990 | 0.991 | 1.000 | 0.789 |
+| Slope baseline, fixed thr=0.08 (v1, reference) | 0.507 | 0.105 | 0.982 | 0.033 | 0.856 |
 
-> **TSE gate: PASSED with +49.3%.** The strongest result of all five experiments.
+> **TSE gate: NOT MET.** SSM is +5.2pp over the tuned baseline — the gate requires >10pp.
 
-**Why the moving average fails on rising and declining:**
+**What the pre-audit version got wrong:** the fixed threshold 0.08 sits ~1.5σ *above* the
+generator's true rising/declining slope (0.8/11 ≈ 0.0736 ± 0.0043 per week), so the
+baseline classified nearly every monotonic trend as noise (rising 10.5%, declining 3.3%).
+That alone produced the pre-audit "+49.3%" headline. The earlier doc also explained the
+failure as "short 3-week window can't see a saturating rise" — but the baseline's first
+decision branch is a regression over all 12 weeks, and the generator's rising trend is
+linear, not saturating. The failure was the threshold, not the window.
 
-```
-"Rising" trend (week 1→12):   0.1  0.2  0.3  0.4  0.5  0.6  0.7  0.8  0.85  0.88  0.90  0.91
-                                                                    ↑
-                               Moving average window (last 3 wks) ─┘
-                               Slope ≈ 0.01 → classified as "noise" ✗
-
-SSM sees all 12 weeks → recognizes monotonic rise from start → "rising" ✓
-```
-
-The moving average has the same blind spot that `DECAY_WINDOW_DAYS` has in TSE:
-a signal that has been rising for months looks **flat** in a short recent window because it is approaching its ceiling. The SSM sees the full trajectory shape.
+**Where the SSM still genuinely wins:** the noise class (+21pp). The tuned threshold
+over-fires rising/declining on noisy sequences (a noisy series sometimes fits a steep
+line); the SSM separates "random" from "shaped" better. On synthetic data *designed* to
+favor shape recognition, that is worth 5 points total — not 49, and not enough for the gate.
 
 ```mermaid
 flowchart LR
-    A[Week 1-12\nFull sequence] -->|SSMClassifier| B[sees full shape\n→ 100% accuracy]
-    C[Week 10-12\nLast 3 weeks only] -->|MovingAverage| D[sees flattening\n→ misclassifies rising\nas noise]
-    B --> E[✓ Correct: RISING]
-    D --> F[✗ Wrong: NOISE]
+    A[Week 1-12\nFull sequence] -->|SSMClassifier| B[100% accuracy\nbut perfectly separable data]
+    C[Same data] -->|Tuned slope rule| D[94.8% accuracy\ntwo interpretable parameters]
+    B --> E[Delta +5.2pp\nbelow 10pp gate]
+    D --> E
 ```
 
 ---
@@ -216,50 +257,24 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[All experiments complete] --> B{Primary gate\nExp 04}
-    B -->|NOT MET +1%| C[Keep cost-aware routing\nin agent-pool]
-    A --> D{Secondary gate\nExp 03}
-    D -->|PASSED 0.25 steps| E[Phase 2: validate on\nreal agent-pool traces]
-    E --> F[If confirmed: add to\nSimpleAO Guard system]
-    A --> G{TSE velocity gate\nExp 05}
-    G -->|PASSED +49.3%| H[Phase 2: validate on\nreal TSE weekly history]
+    A[All experiments complete\n+ final audit corrections] --> B{Primary gate\nExp 04 routing}
+    B -->|NOT MET| C[No SSM router.\nStatic routing stays]
+    A --> D{Secondary gate\nExp 03 anomaly}
+    D -->|NOT MET at matched FP\n+1.1 steps| E[No SSM health loop.\nTuned static rules stay]
+    A --> F{TSE gate\nExp 05 velocity}
+    F -->|NOT MET\n+5.2pp vs tuned rule| G[No SSM in TSE.\nTuned slope classifier is the bar]
+    C --> H[PROJECT CLOSED\nnegative result documented]
+    E --> H
+    G --> H
 ```
 
-| Project | Component | Phase 2 Finding | Next Step |
-|---------|-----------|----------------|-----------|
-| agent-pool routing | Replace with sticky | Sticky most robust (+12.8% vs round-robin on heavy degradation) | **Switch default strategy to sticky in agent-pool** |
-| agent-pool routing | SSMQualityPredictor | +3.4% in-dist, -14.4% on distribution shift — fragile | No integration; revisit with real routing traces |
-| agent-pool health loop | SSMAnomalyDetector | 3.7 steps earlier than tuned threshold; 39% FP rate | **Phase 3**: validate on real traces; tune threshold to 0.65+ |
-| SimpleAO Guard | SSMAnomalyDetector | Same model, different feature vector | **Phase 3**: validate on real pipeline traces |
-| TSE velocity | SSMVelocityTracker | +49.3% over moving average; structural advantage confirmed | **Phase 3**: validate on real TSE weekly history |
-
----
-
-## Architecture: What Goes Where
-
-```
-agent-pool/
-└── pool.py
-    └── _health_loop()  ← ADD SSMAnomalyDetector here
-        │  currently: polls ERROR workers every 30s
-        │  with SSM: event-driven detection, fires in <1 step after anomaly onset
-        └── per-worker event window (deque, last 64 events)
-            → anomaly_score = ssm_detector(window)
-            → if score > 0.65: trigger immediate health check
-
-SimpleAgentsOrchestrator/
-└── guard/
-    └── ssm_guard.py    ← NEW: implements Guard interface
-        │  input: pipeline step events (latency, artifact size, retry count...)
-        └── output: anomaly score → WARN / OK signal to existing Guard system
-
-trend-signal-engine/
-└── core/
-    └── velocity.py     ← NEW (Exp 05 PASSED): SSMVelocityTracker
-           input: weekly [cluster_size, diversity, score] batches
-           output: velocity label (rising / peaking / declining / noise)
-           + compressed SSM state persisted between runs
-```
+| Project | Component | Final finding | Decision |
+|---------|-----------|---------------|----------|
+| agent-pool routing | SSMQualityPredictor | +5.6pp over round-robin in-dist (gate >10pp); shift behaviour swings from best to worst across training seeds | **No integration** — small in-dist upside, unpredictable off-distribution |
+| agent-pool routing | sticky | Robust on degradation shift (2nd), weaker in-dist and in cost-sensitive pools | Candidate for A/B on the real pool; not a synthetic-data verdict |
+| agent-pool health loop | SSMAnomalyDetector | +1.1 steps at matched FP (gate ≥3); FP=100% on shift | **No integration** — tuned static rules stay |
+| SimpleAO Guard | SSMAnomalyDetector | Same model, same shortfall | **No integration** |
+| TSE velocity | SSMVelocityTracker | +5.2pp over tuned slope rule (gate >10pp) | **No integration** — tuned slope classifier is the tool |
 
 ---
 
@@ -269,42 +284,15 @@ trend-signal-engine/
 |--------|--------------|---------------|
 | Imitation learning sets the ceiling | v1 SSMRouter copied cost-aware exactly — couldn't beat it | Training target defines maximum performance; use quality prediction instead |
 | Broken baselines hide real results | v1 least-busy = round-robin (0.602 each); fixed version = 0.860 | Always verify that baselines test distinct policies before drawing conclusions |
-| Simple heuristics can be more robust | Sticky beats SSM on distribution shift (0.824 vs 0.741) | Learned models overfit to training distribution; error-triggered rules generalise better |
-| Tuned baseline changes the story | v1 threshold missed 100%; tuned threshold detects with 6.65 step lag | A single untuned configuration is not a fair baseline — always tune on val set |
-| AUC and miss rate can contradict | v1 threshold: AUC 0.965 but miss rate 100% | AUC ranks correctly but threshold selection can still fail completely |
-| High FP rate is a practical concern | SSM 39% FP vs threshold 17.7% — more trigger-happy | Detection threshold needs tuning to 0.65+ before production health loop use |
-| Cost-aware fails under adversarial conditions | Cost-aware routes to free (CLI) workers — exactly the ones degrading | Business-objective heuristics can have correlated failure modes |
-| SSM is strong where shape matters | Exp 05: +49.3% over moving average for velocity | Sequential pattern recognition over long horizons is the SSM's genuine strength |
-| CPU training time is a real cost | Exp 04 quality predictor: 36 min on CPU; Exp 03 SSM: 3.4 min | GPU (RTX 5070) needed for iteration speed; CPU is fine for inference evaluation |
-
----
-
-## What Is Exp 05 (TSE Velocity Tracking)?
-
-The routing problem (Exp 04) was solved by a static rule. But TSE has a **different** problem:
-
-```
-Current TSE:                          SSM TSE (proposed):
-┌──────────────────────────────┐      ┌─────────────────────────────────┐
-│ Week 1: process all signals  │      │ Week 1: run SSM, save state     │
-│ Week 2: process all signals  │  vs  │ Week 2: load state, update SSM  │
-│ Week 3: process all signals  │      │ Week 3: load state, update SSM  │
-│ No memory between runs       │      │ Velocity = change in SSM state  │
-└──────────────────────────────┘      └─────────────────────────────────┘
-```
-
-| Question | Static baseline | SSM approach |
-|----------|----------------|-------------|
-| Is this trend rising? | Compare week N vs week N-1 | SSM sees full 12-week trajectory |
-| Classify: rising/peaking/declining/noise | Moving average slope | SSMClassifier on weekly sequences |
-| State persistence | Reprocess all history each run | Persist compressed SSM hidden state (small binary blob) |
-
-**The test is already wired up.** `generate_trend_velocity_dataset()` in `data/generators.py` produces 200 synthetic trends × 12 weeks with 4 velocity labels. Exp 05 would compare:
-
-- `SSMClassifier` on 12-week sequences
-- `MovingAverageClassifier` (slope of last 3 weeks)
-
-This is a structurally different problem from routing — here the SSM's long-range temporal compression has a genuine advantage over a simple difference.
+| **Tune every baseline, every time** | v1/v2 Exp 05 used a fixed slope threshold ~1.5σ above the true signal — "+49.3%" collapsed to +5.2pp after tuning | The same lesson Phase 2 applied to Exp 03 was forgotten in Exp 05; a gate is only as honest as its weakest-tuned baseline |
+| **Compare detectors at matched operating points** | Exp 03 "passed" with a 3.8-step advantage at FP 39% vs 18%; at matched FP the advantage is 1.1 steps | Lag/AUC comparisons without matching FP rates reward trigger-happy models |
+| **Single runs mislead; replicate across seeds** | v2 (leaky seeds) called the router shift-fragile; the corrected seed-42 run called it the most robust (0.877); the seed-43 replication put it last again (0.705 / 0.558) | Neither a leaky number nor one clean run supports a robustness claim — the learned router's shift behaviour is a training-seed coin flip |
+| A learned policy may just re-derive a simple one | Seed-42 router = "park on the best worker" (sticky with foresight); seed-43 router parked on the worst choices off-distribution | Even the policy's identity is seed-dependent; if the best case is isomorphic to a heuristic, ship the heuristic |
+| Tuned baseline changes the story | v1 threshold missed 100%; tuned threshold detects with ~7 step lag | A single untuned configuration is not a fair baseline — always tune on val set |
+| High FP rate is a practical concern | SSM 37–39% FP vs threshold 13–18%; FP=100% on shift set | Raw score thresholds don't transfer across distributions |
+| Optimise and judge on the same objective | v2 routing eval had an inert cost term (scale 1.0 vs 0.015 in training target) | Metric normalisation constants are part of the experiment design |
+| SSM's advantage needs length | At seq 12–64, LSTM/slope rules match the SSM; SSM trained 20x slower on CPU | Mamba's case (linear-time long sequences) never engaged in this playground |
+| Cost-aware fails under adversarial conditions | Cost-aware routes to free workers — exactly the ones degrading; in all-paid pools it degenerates to least-busy by construction | Business-objective heuristics can have correlated failure modes and hidden no-op conditions |
 
 ---
 
@@ -316,20 +304,20 @@ python experiments/01_setup_check.py
 python experiments/02_event_classify.py
 python experiments/03_anomaly_detect.py
 python experiments/04_routing_sim.py
+python experiments/05_tse_velocity.py
 
 # Run only the gates (skip sanity checks)
 python experiments/03_anomaly_detect.py
 python experiments/04_routing_sim.py
+python experiments/05_tse_velocity.py
+
+# Smoke tests (shapes, forward passes, report safety)
+python tests/test_smoke.py
 
 # Read results
 cat results/03_anomaly_report.json
 cat results/04_routing_report.json
-
-# On Blackwell GPU machine — build mamba-ssm first
-export TORCH_CUDA_ARCH_LIST="12.0"
-pip install causal-conv1d --no-binary causal-conv1d
-pip install mamba-ssm --no-binary mamba-ssm
-python experiments/01_setup_check.py   # verify GPU detected
+cat results/05_tse_velocity_report.json
 ```
 
 ---
@@ -338,14 +326,18 @@ python experiments/01_setup_check.py   # verify GPU detected
 
 ```
 Exp 01  ✅ complete — CPU ready, 1008 seq/s at seq=32
-Exp 02  ✅ complete — SSM correct, synthetic data too easy to rank models
-Exp 03  ✅ complete (Phase 2) — SECONDARY GATE PASSED: 3.7 steps earlier than tuned threshold
-                                 FP rate 39% → tune detection threshold before production
-Exp 04  ✅ complete (Phase 2) — PRIMARY GATE NOT MET (+3.4%); sticky is most robust routing strategy
-                                 SSMQualityPredictor fragile on distribution shift (−14.4%)
-Exp 05  ✅ complete — TSE GATE PASSED +49.3%; structural advantage over moving average confirmed
+Exp 02  ✅ complete — SSM correct; synthetic data too easy to rank models
+Exp 03  ✅ complete (final audit) — SECONDARY GATE NOT MET:
+                                 +1.1 steps at matched FP rate (gate ≥3)
+Exp 04  ✅ complete (final audit + seed replication) — PRIMARY GATE NOT MET:
+                                 +5.6pp / +4.8pp over round-robin (gate >10pp)
+                                 shift behaviour is training-seed dependent:
+                                 0.877→0.705 (degradation), 0.741→0.558 (all-API)
+Exp 05  ✅ complete (final audit) — TSE GATE NOT MET:
+                                 +5.2pp over val-tuned slope baseline (gate >10pp)
 
-Actionable today:
-  → Switch agent-pool default strategy to sticky
-  → Phase 3: collect real event traces, re-run Exp 03 + 05 on real data
+PROJECT CLOSED (2026-08) — negative result on all three gates.
+No SSM integration into agent-pool, SimpleAO, or TSE.
+Reopen conditions: real event traces / real TSE history + streaming cadence
+(see external_final_audit.md §6).
 ```

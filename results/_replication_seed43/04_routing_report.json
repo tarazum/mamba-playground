@@ -1,0 +1,234 @@
+{
+  "config": {
+    "n_workers": 5,
+    "event_dim": 6,
+    "seq_len": 16,
+    "d_model": 32,
+    "n_layers": 2,
+    "n_train_episodes": 500,
+    "batch_size": 64,
+    "epochs": 20,
+    "lr": 0.0003,
+    "episode_length": 200,
+    "n_sim_episodes": 200
+  },
+  "device": "cpu",
+  "gate": {
+    "condition": "SSM composite_quality > round-robin by > 10%",
+    "integrate_threshold": 0.1,
+    "comparable_threshold": 0.05
+  },
+  "in_distribution": {
+    "round-robin": {
+      "strategy": "round-robin",
+      "n_episodes": 200,
+      "avg_latency_ms": 254.98,
+      "p95_latency_ms": 258.17,
+      "error_rate": 0.0512,
+      "avg_cost_usd": 0.001,
+      "composite_quality": 0.8205,
+      "sim_time_s": 0.15
+    },
+    "least-busy": {
+      "strategy": "least-busy",
+      "n_episodes": 200,
+      "avg_latency_ms": 221.8,
+      "p95_latency_ms": 223.65,
+      "error_rate": 0.0323,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.8604,
+      "sim_time_s": 0.21
+    },
+    "cost-aware": {
+      "strategy": "cost-aware",
+      "n_episodes": 200,
+      "avg_latency_ms": 221.8,
+      "p95_latency_ms": 223.65,
+      "error_rate": 0.0323,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.8604,
+      "sim_time_s": 0.17
+    },
+    "sticky": {
+      "strategy": "sticky",
+      "n_episodes": 200,
+      "avg_latency_ms": 242.26,
+      "p95_latency_ms": 271.95,
+      "error_rate": 0.0329,
+      "avg_cost_usd": 0.0012,
+      "composite_quality": 0.833,
+      "sim_time_s": 0.14
+    },
+    "ssm_predictor": {
+      "strategy": "ssm",
+      "n_episodes": 200,
+      "avg_latency_ms": 201.18,
+      "p95_latency_ms": 203.59,
+      "error_rate": 0.0392,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.869,
+      "train_result": {
+        "best_val_loss": 0.0115,
+        "history": {
+          "train_loss": [
+            0.0189,
+            0.01137,
+            0.01136,
+            0.01137,
+            0.01136,
+            0.01136,
+            0.01135,
+            0.01135,
+            0.01135,
+            0.01135,
+            0.01135,
+            0.01134,
+            0.01134,
+            0.01134,
+            0.01134,
+            0.01134,
+            0.01134,
+            0.01134,
+            0.01134,
+            0.01133
+          ],
+          "val_loss": [
+            0.01162,
+            0.01153,
+            0.01152,
+            0.01153,
+            0.0115,
+            0.01156,
+            0.01151,
+            0.0115,
+            0.01151,
+            0.01152,
+            0.01152,
+            0.01151,
+            0.01151,
+            0.0115,
+            0.01151,
+            0.01151,
+            0.0115,
+            0.0115,
+            0.0115,
+            0.0115
+          ]
+        }
+      },
+      "n_params": 17893,
+      "train_time_s": 768.8,
+      "sim_time_s": 84.87
+    }
+  },
+  "distribution_shift": {
+    "round-robin": {
+      "strategy": "round-robin",
+      "n_episodes": 200,
+      "avg_latency_ms": 367.06,
+      "p95_latency_ms": 372.37,
+      "error_rate": 0.1487,
+      "avg_cost_usd": 0.001,
+      "composite_quality": 0.7174,
+      "sim_time_s": 0.29
+    },
+    "least-busy": {
+      "strategy": "least-busy",
+      "n_episodes": 200,
+      "avg_latency_ms": 319.27,
+      "p95_latency_ms": 324.33,
+      "error_rate": 0.1189,
+      "avg_cost_usd": 0.0007,
+      "composite_quality": 0.7611,
+      "sim_time_s": 0.36
+    },
+    "cost-aware": {
+      "strategy": "cost-aware",
+      "n_episodes": 200,
+      "avg_latency_ms": 337.11,
+      "p95_latency_ms": 342.92,
+      "error_rate": 0.1485,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.748,
+      "sim_time_s": 0.31
+    },
+    "sticky": {
+      "strategy": "sticky",
+      "n_episodes": 200,
+      "avg_latency_ms": 272.15,
+      "p95_latency_ms": 301.16,
+      "error_rate": 0.0517,
+      "avg_cost_usd": 0.002,
+      "composite_quality": 0.7973,
+      "sim_time_s": 0.27
+    },
+    "ssm_predictor": {
+      "strategy": "ssm",
+      "n_episodes": 200,
+      "avg_latency_ms": 381.26,
+      "p95_latency_ms": 388.44,
+      "error_rate": 0.1927,
+      "avg_cost_usd": 0.0,
+      "composite_quality": 0.7047,
+      "sim_time_s": 85.06
+    }
+  },
+  "cost_regime_shift": {
+    "round-robin": {
+      "strategy": "round-robin",
+      "n_episodes": 200,
+      "avg_latency_ms": 330.28,
+      "p95_latency_ms": 333.8,
+      "error_rate": 0.0284,
+      "avg_cost_usd": 0.0086,
+      "composite_quality": 0.6852,
+      "sim_time_s": 0.27
+    },
+    "least-busy": {
+      "strategy": "least-busy",
+      "n_episodes": 200,
+      "avg_latency_ms": 301.43,
+      "p95_latency_ms": 305.32,
+      "error_rate": 0.0227,
+      "avg_cost_usd": 0.0061,
+      "composite_quality": 0.7374,
+      "sim_time_s": 0.37
+    },
+    "cost-aware": {
+      "strategy": "cost-aware",
+      "n_episodes": 200,
+      "avg_latency_ms": 301.43,
+      "p95_latency_ms": 305.32,
+      "error_rate": 0.0227,
+      "avg_cost_usd": 0.0061,
+      "composite_quality": 0.7374,
+      "sim_time_s": 0.35
+    },
+    "sticky": {
+      "strategy": "sticky",
+      "n_episodes": 200,
+      "avg_latency_ms": 310.23,
+      "p95_latency_ms": 336.66,
+      "error_rate": 0.0248,
+      "avg_cost_usd": 0.0068,
+      "composite_quality": 0.7216,
+      "sim_time_s": 0.25
+    },
+    "ssm_predictor": {
+      "strategy": "ssm",
+      "n_episodes": 200,
+      "avg_latency_ms": 398.57,
+      "p95_latency_ms": 403.14,
+      "error_rate": 0.0416,
+      "avg_cost_usd": 0.0148,
+      "composite_quality": 0.5578,
+      "sim_time_s": 85.86
+    }
+  },
+  "deltas": {
+    "ssm_vs_round_robin_in_dist": 0.0485,
+    "ssm_vs_round_robin_shift": -0.0127,
+    "ssm_vs_round_robin_all_api": -0.1274
+  },
+  "verdict": "SSM COMPARABLE to round-robin (delta=+4.8%) \u2014 within 5%; static strategies sufficient; SSM preferred only where temporal state tracking adds independent value"
+}

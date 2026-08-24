@@ -1,13 +1,26 @@
 """
 Experiment 04 — SSM Routing vs Static Strategies (PRIMARY GATE)
 
-Improvements over v1:
+Improvements over v1 (Phase 2):
   - Prediction-based routing: SSMQualityPredictor trains to predict worker quality
     from observed outcomes (random routing data), not to copy an oracle's labels.
   - Queue-depth least-busy: tracks in-flight requests, not cumulative counts.
   - Sticky routing baseline: added as a real competitor.
   - Distribution shift: evaluate all strategies on a heavy-degradation pool not
     seen during training.
+
+Improvements over v2 (final audit fix):
+  - Composite quality now normalises cost on the per-call scale (0.015), matching
+    _step_quality in data/generators.py. v2 used 1.0, which made the 20% cost
+    weight inert (all strategies scored ~0.9998) while the training target was
+    cost-sensitive — the model was optimised for a different objective than the
+    one it was judged by.
+  - Training episodes now use a separate seed stream (SEED + 1000). v2 built the
+    training set from default_rng(SEED), whose first 200 draws are exactly the
+    in-distribution evaluation episodes — mild train/eval leakage.
+  - Third evaluation condition: all-API pool (no free workers, no degradation) —
+    a cost-regime shift that also shows cost-aware degenerating to least-busy
+    when no worker is free.
 
 Gate (CLAUDE.md):
   - SSM composite quality beats round-robin by >10% → candidate for agent-pool router
@@ -33,6 +46,7 @@ from data.generators import (
     simulate_routing_episode,
     default_worker_pool,
     heavy_degradation_pool,
+    all_api_pool,
     POOL_FEATURE_DIM,
 )
 from core.ssm import SSMQualityPredictor
@@ -59,7 +73,9 @@ CFG = {
 }
 
 MAX_LATENCY_MS = 700.0
-MAX_COST_USD   = 1.0
+# Per-call cost scale — matches _MAX_COST_PER_CALL in data/generators.py so the
+# training target (step_quality) and the evaluation metric weigh cost identically.
+MAX_COST_USD   = 0.015
 
 QUALITY_WEIGHTS = {"latency": 0.40, "reliability": 0.40, "cost": 0.20}
 
@@ -228,6 +244,7 @@ def main():
         },
         "in_distribution": {},
         "distribution_shift": {},
+        "cost_regime_shift": {},
     }
 
     # ── Static baselines (in-distribution) ──
@@ -252,7 +269,10 @@ def main():
     print(f"  Building dataset from {CFG['n_train_episodes']} round-robin episodes...",
           end=" ", flush=True)
     t0 = time.time()
-    X_all, T_all = build_quality_prediction_dataset(CFG["n_train_episodes"], CFG, seed=SEED)
+    # Separate seed stream: default_rng(SEED) is used by the evaluation episodes
+    # below — reusing it for training data meant the first 200 training episodes
+    # were exactly the in-distribution eval episodes (seed overlap).
+    X_all, T_all = build_quality_prediction_dataset(CFG["n_train_episodes"], CFG, seed=SEED + 1000)
     build_time = time.time() - t0
     print(f"{len(X_all):,} windows  ({build_time:.1f}s)")
 
@@ -319,6 +339,25 @@ def main():
               f"lat={result['avg_latency_ms']:.0f}ms  "
               f"err={result['error_rate']:.3f}")
 
+    # ── Cost-regime shift: all-API pool (no free workers, no degradation) ──
+    print(f"\n[4b/4] Cost-regime shift — all-API pool "
+          f"(5 paid workers, no degradation, not seen during training)...")
+    for strategy in strategies + ["ssm_predictor"]:
+        s_name = "ssm" if strategy == "ssm_predictor" else strategy
+        ssm_m  = predictor if strategy == "ssm_predictor" else None
+        print(f"  {strategy} ({CFG['n_sim_episodes']} eps)...", end=" ", flush=True)
+        t0 = time.time()
+        result = run_simulation(
+            s_name, CFG["n_sim_episodes"], CFG["episode_length"],
+            seed=SEED + 2, ssm_model=ssm_m, workers_fn=all_api_pool,
+        )
+        result["sim_time_s"] = round(time.time() - t0, 2)
+        report["cost_regime_shift"][strategy] = result
+        print(f"quality={result['composite_quality']:.3f}  "
+              f"lat={result['avg_latency_ms']:.0f}ms  "
+              f"err={result['error_rate']:.3f}  "
+              f"cost=${result['avg_cost_usd']:.4f}")
+
     # ── Summary ──
     print("\n" + "=" * 60)
     print("RESULTS SUMMARY")
@@ -343,6 +382,16 @@ def main():
         print(f"  {name:<20} {s['composite_quality']:>8.3f}  "
               f"{s['avg_latency_ms']:>10.1f}  {s['error_rate']:>7.3f}{marker}")
 
+    print(f"\n  Cost-regime shift (all-API pool, no free workers):")
+    print(f"  {'Strategy':<20} {'Quality':>8}  {'Latency':>10}  {'Error':>7}  {'Cost':>8}")
+    print(f"  {'-' * 58}")
+    for name in strategies + ["ssm_predictor"]:
+        s = report["cost_regime_shift"][name]
+        marker = " ← SSM" if name == "ssm_predictor" else ""
+        print(f"  {name:<20} {s['composite_quality']:>8.3f}  "
+              f"{s['avg_latency_ms']:>10.1f}  {s['error_rate']:>7.3f}  "
+              f"{s['avg_cost_usd']:>8.4f}{marker}")
+
     rr_q   = report["in_distribution"]["round-robin"]["composite_quality"]
     ssm_q  = report["in_distribution"]["ssm_predictor"]["composite_quality"]
     delta_rr = ssm_q - rr_q
@@ -351,9 +400,14 @@ def main():
     ssm_shift_q = report["distribution_shift"]["ssm_predictor"]["composite_quality"]
     delta_shift  = ssm_shift_q - rr_shift_q
 
+    rr_api_q  = report["cost_regime_shift"]["round-robin"]["composite_quality"]
+    ssm_api_q = report["cost_regime_shift"]["ssm_predictor"]["composite_quality"]
+    delta_api  = ssm_api_q - rr_api_q
+
     report["deltas"] = {
         "ssm_vs_round_robin_in_dist":  round(delta_rr,    4),
-        "ssm_vs_round_robin_shift":    round(delta_shift,  4),
+        "ssm_vs_round_robin_shift":    round(delta_shift, 4),
+        "ssm_vs_round_robin_all_api":  round(delta_api,   4),
     }
 
     integrate_t  = report["gate"]["integrate_threshold"]
@@ -379,6 +433,7 @@ def main():
     report["verdict"] = verdict
     print(f"\n  Delta SSM vs round-robin (in-dist):  {delta_rr:+.3f}")
     print(f"  Delta SSM vs round-robin (shift):    {delta_shift:+.3f}")
+    print(f"  Delta SSM vs round-robin (all-API):  {delta_api:+.3f}")
     print(f"\n{'=' * 60}")
     print(f"GATE VERDICT: {verdict}")
     print(f"{'=' * 60}")

@@ -71,13 +71,17 @@ Experiment 04 (routing simulation) is the primary gate:
 - If SSM routing is within 5% of round-robin → static strategies are good enough
 
 Experiment 03 (anomaly detection) is the secondary gate:
-- If SSM detects stuck workers >3 events before timeout → candidate for agent-pool health loop + SimpleAO Guard
+- If SSM detects anomalies ≥3 steps before the tuned threshold baseline at a matched false-positive rate → candidate for agent-pool health loop + SimpleAO Guard
 - If detection lag is similar to a simple threshold → static rules are good enough
 
 Experiment 05 (TSE velocity) is the TSE gate:
-- If SSM beats moving-average baseline by >10% on velocity classification → candidate for TSE velocity tracker
-- If comparable → DECAY_WINDOW_DAYS heuristic is sufficient
+- If SSM beats the *tuned* slope-threshold baseline by >10% on velocity classification → candidate for TSE velocity tracker
+- If comparable → slope-threshold heuristic is sufficient
 
-**Gates passing on synthetic data means: proceed to Phase 2 (real trace validation), not production integration.**
+**Final status (2026-08, project closed): all three gates FAILED after the final audit
+corrected the baselines and comparison methodology. No SSM integration into any
+production system. See `docs/external_final_audit.md` and
+`docs/experiment_results_analysis.md` for the corrected numbers and closure decision.**
 
-Do not integrate Mamba into production systems before running all five experiments AND validating on real event traces.
+Gates passing on synthetic data would have meant: proceed to Phase 2 (real trace
+validation), not production integration — the project closed at the gate stage.
